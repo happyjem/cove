@@ -2,49 +2,71 @@
 
 ## What is Morfeo
 
-Morfeo is a GUI database client written in Rust + iced. Alternative to DataGrip and TablePlus.
+Morfeo is a GUI database client written in Swift + SwiftUI for macOS 15+.
 
-## Rules
+## Code Style
+- Idiomatic Swift 6. Structured concurrency, @Observable, modern SwiftUI APIs.
+- Keep it simple. No premature abstractions, no unnecessary generics.
+- Only add code that is needed right now.
 
-### Code Style
-- Write ONLY idiomatic Rust. No C-style patterns, no Java-style patterns.
-- Keep code simple. If a solution feels complicated, step back and find a simpler one.
-- Do not over-engineer. No premature abstractions, no unnecessary generics, no design patterns "just in case".
-- Three lines of similar code is better than a premature abstraction.
-- Only add code that is needed right now. Do not build for hypothetical future requirements.
-
-### Structure
-- The codebase must be easy to understand for any Rust developer.
-- The codebase must be easy to contribute to. Small files, clear naming, obvious organization.
-- One concern per file. If a file grows beyond ~300 lines, split it.
+## Structure
+- One concern per file. Split files beyond ~300 lines.
 - Organize by feature, not by layer.
-- Do not add comments for obvious code. Only comment "why", never "what".
-- Do not add unnecessary type annotations — let Rust infer where it can.
+- Only comment "why", never "what".
 
-### Error Handling
-- Use `Result` and `?` operator. No `.unwrap()` in production code.
-- Keep error types simple. String-based errors are fine when the error is only displayed to the user.
-- Only validate at system boundaries (user input, database responses). Trust internal code.
+## Architecture
 
-### Dependencies
-- Minimal dependencies. Every new crate must justify its existence.
-- Prefer the standard library when it's good enough.
+```
+Morfeo/
+  MorfeoApp.swift
+  DB/
+    DatabaseBackend.swift      — protocol all backends implement
+    ConnectionConfig.swift     — connection configuration types
+    HierarchyNode.swift        — tree hierarchy types
+    QueryResult.swift          — query result types
+    DbError.swift              — error types
+    Postgres/                  — everything Postgres-specific
+      PostgresBackend.swift
+      (future: highlights, formatters, etc.)
+    MySQL/                     — everything MySQL-specific (future)
+      MySQLBackend.swift
+  Views/                       — all SwiftUI views
+  State/                       — @Observable state classes
+  Store/                       — JSON persistence
+  Theme/                       — color palette constants
+```
 
-### Architecture
-- `src/db/` — all database logic. Each backend is one file implementing `DatabaseBackend` trait.
-- `src/ui/` — all iced UI components. Each component is one file.
-- `src/app.rs` — top-level application state, messages, update, view.
+- Each database backend lives in its own subdirectory under `DB/`.
+- All backend-specific code (driver, SQL highlights, formatters, type mappings) goes inside that subdirectory.
+- Shared DB abstractions (`DatabaseBackend` protocol, `QueryResult`, `HierarchyNode`, etc.) stay in `DB/` root.
 - Adding a new database backend should require ZERO changes to UI code.
+
+## UI Style
+- Always use native macOS controls and materials. No custom-drawn buttons, backgrounds, or chrome when SwiftUI provides a standard equivalent.
+- Use system button styles (`.bordered`, `.borderless`, `.borderedProminent`), native `Picker` with `.segmented`, and standard materials (`.bar`, `.ultraThinMaterial`) instead of custom colors/shapes.
+- Prefer `.secondary` / `.primary` foreground styles over theme-specific colors for standard UI elements.
+- Never implement custom gestures (e.g. `DragGesture`) for behaviors that SwiftUI or AppKit already provide. Use `HSplitView`/`VSplitView` for resizable panes, `NavigationSplitView` for navigation columns, native `List` for selection, etc. Custom gesture-based layout is always laggy compared to the system implementation.
+
+## Error Handling
+- Use `throws` and `try`. No force-unwraps in production code.
+- String-based errors are fine when only displayed to the user.
+- Only validate at system boundaries (user input, database responses).
+
+## Dependencies
+- Minimal. Every new package must justify its existence.
+- Prefer Foundation/SwiftUI when good enough.
 
 ## Build & Run
 
 ```
-cargo build
-cargo run
+xcodebuild -scheme Morfeo -derivedDataPath .build build && open .build/Build/Products/Debug/Morfeo.app
 ```
 
+Or open `Morfeo.xcodeproj` in Xcode and build (Cmd+B).
+
 ## Tech Stack
-- Rust (edition 2024)
-- iced (GUI framework, with tokio feature)
-- sqlx (database driver for PostgreSQL, MySQL)
-- async-trait (async trait methods)
+- Swift 6 + SwiftUI (macOS 15+)
+- PostgresNIO (PostgreSQL driver)
+- SF Symbols (icons)
+- @Observable (state management)
+- JSON + Codable (persistence)
