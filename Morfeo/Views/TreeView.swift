@@ -9,11 +9,14 @@ struct TreeView: View {
                 ForEach(state.tree.flatItems) { item in
                     treeRow(item)
                         .padding(.leading, CGFloat(item.depth) * 10)
+                        .contextMenu { contextMenuItems(for: item.path) }
                 }
             }
             .padding(.vertical, 4)
             .padding(.horizontal, 6)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
+        .contextMenu { contextMenuItems(for: []) }
     }
 
     private func treeRow(_ item: FlatTreeItem) -> some View {
@@ -59,6 +62,21 @@ struct TreeView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+        }
+    }
+
+    @ViewBuilder
+    private func contextMenuItems(for path: [String]) -> some View {
+        if let label = state.connection?.creatableChildLabel(path: path) {
+            Button("New \(label)...") {
+                state.promptCreateChild(parentPath: path)
+            }
+        }
+        if state.connection?.isDeletable(path: path) == true {
+            Divider()
+            Button("Drop \(path.last ?? "")...", role: .destructive) {
+                state.promptDeleteNode(path: path)
+            }
         }
     }
 }

@@ -3,11 +3,13 @@ import Foundation
 enum BackendType: String, Codable, CaseIterable, Sendable {
     case postgres
     case scylladb
+    case redis
 
     var displayName: String {
         switch self {
         case .postgres: "PostgreSQL"
         case .scylladb: "ScyllaDB"
+        case .redis: "Redis"
         }
     }
 
@@ -15,6 +17,7 @@ enum BackendType: String, Codable, CaseIterable, Sendable {
         switch self {
         case .postgres: "postgres-logo"
         case .scylladb: "scylladb-logo"
+        case .redis: "redis-logo"
         }
     }
 
@@ -22,6 +25,7 @@ enum BackendType: String, Codable, CaseIterable, Sendable {
         switch self {
         case .postgres: "5432"
         case .scylladb: "9042"
+        case .redis: "6379"
         }
     }
 }
@@ -41,5 +45,7 @@ func morfeoConnect(config: ConnectionConfig) async throws -> any DatabaseBackend
         return try await PostgresBackend.connect(config: config)
     case .scylladb:
         return try await ScyllaBackend.connect(config: config)
+    case .redis:
+        return try await RedisBackend.connect(config: config)
     }
 }

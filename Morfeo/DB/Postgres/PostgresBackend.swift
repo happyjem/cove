@@ -96,6 +96,11 @@ final class PostgresBackend: DatabaseBackend, @unchecked Sendable {
         addClient(client, key: database)
         return client
     }
+
+    func quoteIdentifier(_ name: String) -> String {
+        let escaped = name.replacingOccurrences(of: "\"", with: "\"\"")
+        return "\"\(escaped)\""
+    }
 }
 
 // MARK: - Helpers

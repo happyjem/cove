@@ -160,7 +160,7 @@ struct ContentView: View {
         case .table:
             if let table = state.table {
                 VStack(spacing: 0) {
-                    if state.tableTab == .structure, state.isDataGroupTable {
+                    if state.tableTab == .structure, state.hasStructureTab {
                         if let structure = state.structureTable {
                             DataTableView(table: structure, isQueryResult: true)
                         } else {
@@ -171,7 +171,7 @@ struct ContentView: View {
                         DataTableView(table: table, isQueryResult: false)
                     }
 
-                    if state.isDataGroupTable, state.tableTab == .structure {
+                    if state.hasStructureTab, state.tableTab == .structure {
                         structureFooter
                     }
                 }

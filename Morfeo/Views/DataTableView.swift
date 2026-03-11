@@ -125,7 +125,7 @@ struct DataTableView: View {
 
     private var paginationFooter: some View {
         HStack {
-            if state.isDataGroupTable {
+            if state.hasStructureTab {
                 Picker("", selection: Binding(
                     get: { state.tableTab },
                     set: { state.tableTabChanged($0) }
@@ -137,14 +137,14 @@ struct DataTableView: View {
                 .labelsHidden()
                 .controlSize(.small)
                 .fixedSize()
+            }
 
-                if state.isEditableTable {
-                    Button { state.addRow() } label: {
-                        Label("New Row", systemImage: "plus")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+            if state.isEditableTable {
+                Button { state.addRow() } label: {
+                    Label("New Row", systemImage: "plus")
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
             }
 
             Spacer()

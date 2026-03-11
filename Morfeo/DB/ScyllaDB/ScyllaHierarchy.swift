@@ -39,6 +39,104 @@ extension ScyllaBackend {
         path.count >= 4 && path[1] == "Tables" && path[3] == "Indexes"
     }
 
+    // MARK: - Creation
+
+    func creatableChildLabel(path: [String]) -> String? {
+        switch path.count {
+        case 0: "Keyspace"
+        case 2:
+            switch path[1] {
+            case "Tables": "Table"
+            default: nil
+            }
+        default: nil
+        }
+    }
+
+    private static let cqlReplicationClasses = [
+        "SimpleStrategy", "NetworkTopologyStrategy",
+    ]
+
+    private static let cqlColumnTypes = [
+        "bigint", "int", "smallint", "tinyint", "varint",
+        "text", "ascii", "varchar",
+        "boolean", "uuid", "timeuuid",
+        "float", "double", "decimal",
+        "date", "timestamp", "time", "duration",
+        "blob", "inet", "counter",
+    ]
+
+    func createFormFields(path: [String]) -> [CreateField] {
+        switch path.count {
+        case 0:
+            return [
+                CreateField(id: "name", label: "Name", defaultValue: "", placeholder: "my_keyspace"),
+                CreateField(id: "class", label: "Replication Class", defaultValue: "SimpleStrategy",
+                            placeholder: "SimpleStrategy", options: Self.cqlReplicationClasses),
+                CreateField(id: "rf", label: "Replication Factor", defaultValue: "1", placeholder: "1"),
+            ]
+        case 2 where path[1] == "Tables":
+            return [
+                CreateField(id: "name", label: "Table Name", defaultValue: "", placeholder: "my_table"),
+                CreateField(id: "column", label: "Column Name", defaultValue: "id", placeholder: "id"),
+                CreateField(id: "type", label: "Column Type", defaultValue: "bigint", placeholder: "bigint",
+                            options: Self.cqlColumnTypes),
+            ]
+        default:
+            return []
+        }
+    }
+
+    func generateCreateChildSQL(path: [String], values: [String: String]) -> String? {
+        let name = values["name", default: ""].trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return nil }
+        let q = quoteIdentifier(name)
+
+        switch path.count {
+        case 0:
+            let cls = values["class", default: "SimpleStrategy"]
+            let rf = values["rf", default: "1"]
+            return "CREATE KEYSPACE \(q) WITH replication = {'class': '\(cls)', 'replication_factor': \(rf)}"
+        case 2 where path[1] == "Tables":
+            let col = values["column", default: "id"]
+            let type = values["type", default: "bigint"]
+            return "CREATE TABLE \(quoteIdentifier(path[0])).\(q) (\(quoteIdentifier(col)) \(type) PRIMARY KEY)"
+        default:
+            return nil
+        }
+    }
+
+    // MARK: - Deletion
+
+    func isDeletable(path: [String]) -> Bool {
+        switch path.count {
+        case 1: true                                                       // keyspace
+        case 3: ["Tables", "Materialized Views"].contains(path[1])         // table / view
+        default: false
+        }
+    }
+
+    func generateDropSQL(path: [String]) -> String? {
+        switch path.count {
+        case 1:
+            return "DROP KEYSPACE \(quoteIdentifier(path[0]))"
+        case 3:
+            let fqn = "\(quoteIdentifier(path[0])).\(quoteIdentifier(path[2]))"
+            switch path[1] {
+            case "Tables":             return "DROP TABLE \(fqn)"
+            case "Materialized Views": return "DROP MATERIALIZED VIEW \(fqn)"
+            default: return nil
+            }
+        default:
+            return nil
+        }
+    }
+
+    private func quoteIdentifier(_ name: String) -> String {
+        let escaped = name.replacingOccurrences(of: "\"", with: "\"\"")
+        return "\"\(escaped)\""
+    }
+
     // MARK: - Tree navigation
 
     func listChildren(path: [String]) async throws -> [HierarchyNode] {
@@ -135,13 +233,15 @@ extension ScyllaBackend {
     // MARK: - Node details
 
     func fetchNodeDetails(path: [String]) async throws -> QueryResult {
-        guard path.count >= 3 else {
+        guard path.count >= 2 else {
             return QueryResult(columns: [], rows: [], rowsAffected: nil, totalCount: nil)
         }
 
         let ks = path[0]
 
         switch path.count {
+        case 2:
+            return try await groupDetail(keyspace: ks, group: path[1])
         case 3:
             return try await itemDetail(keyspace: ks, group: path[1], name: path[2])
         case 4:
@@ -212,6 +312,41 @@ extension ScyllaBackend {
                 tint: col.isPrimaryKey ? Self.tintKey : Self.tintColumn,
                 isExpandable: false
             )
+        }
+    }
+
+    private func groupDetail(keyspace: String, group: String) async throws -> QueryResult {
+        switch group {
+        case "Tables":
+            let rows = try await client.query(
+                "SELECT table_name, comment FROM system_schema.tables WHERE keyspace_name = '\(keyspace)'"
+            )
+            let cols = [
+                ColumnInfo(name: "Table", typeName: "text", isPrimaryKey: false),
+                ColumnInfo(name: "Comment", typeName: "text", isPrimaryKey: false),
+            ]
+            var resultRows: [[String?]] = []
+            for row in rows {
+                resultRows.append([
+                    row.column("table_name")?.string,
+                    row.column("comment")?.string,
+                ])
+            }
+            resultRows.sort { ($0[0] ?? "") < ($1[0] ?? "") }
+            return QueryResult(columns: cols, rows: resultRows, rowsAffected: nil, totalCount: nil)
+        case "Materialized Views":
+            let rows = try await client.query(
+                "SELECT view_name FROM system_schema.views WHERE keyspace_name = '\(keyspace)'"
+            )
+            let cols = [ColumnInfo(name: "View", typeName: "text", isPrimaryKey: false)]
+            var resultRows: [[String?]] = []
+            for row in rows {
+                resultRows.append([row.column("view_name")?.string])
+            }
+            resultRows.sort { ($0[0] ?? "") < ($1[0] ?? "") }
+            return QueryResult(columns: cols, rows: resultRows, rowsAffected: nil, totalCount: nil)
+        default:
+            return QueryResult(columns: [], rows: [], rowsAffected: nil, totalCount: nil)
         }
     }
 

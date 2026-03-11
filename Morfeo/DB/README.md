@@ -1,6 +1,6 @@
 # Adding a Database Backend to Morfeo
 
-Morfeo uses a protocol-based backend system. Each database (Postgres, MySQL, Redis, etc.) implements the `DatabaseBackend` protocol. The UI layer is fully agnostic — it never checks which backend is active, so adding a new database requires **zero changes to UI code**.
+Morfeo uses a protocol-based backend system. Each database (Postgres, ScyllaDB, MySQL, etc.) implements the `DatabaseBackend` protocol. The UI layer is fully agnostic — it never checks which backend is active, so adding a new database requires **zero changes to UI code**.
 
 ## Step-by-step
 
@@ -46,6 +46,15 @@ protocol DatabaseBackend: Sendable {
     func generateInsertSQL(...) -> String
     func generateDeleteSQL(...) -> String
     func generateDropElementSQL(path:elementName:) -> String
+
+    // Sidebar create (all optional — defaults return nil/empty)
+    func creatableChildLabel(path: [String]) -> String?
+    func createFormFields(path: [String]) -> [CreateField]
+    func generateCreateChildSQL(path: [String], values: [String: String]) -> String?
+
+    // Sidebar drop (all optional — defaults return false/nil)
+    func isDeletable(path: [String]) -> Bool
+    func generateDropSQL(path: [String]) -> String?
 }
 ```
 
@@ -58,6 +67,40 @@ protocol DatabaseBackend: Sendable {
 - **`syntaxKeywords`** — Set of uppercase keywords for syntax highlighting. Can be empty for non-SQL backends.
 - **`executeQuery(database:sql:)`** — Accepts any command string, not just SQL. For Redis this could be `GET key`, for MongoDB a JSON command.
 
+### Sidebar create/drop
+
+All five methods have default no-op implementations, so they are **opt-in**. A backend that doesn't implement them simply won't show context-menu items for creating or dropping nodes.
+
+- **`creatableChildLabel(path:)`** — Return a label like `"Database"`, `"Table"`, etc. to enable the "New …" context-menu item on that tree node. Return `nil` to disable.
+- **`createFormFields(path:)`** — Return an array of `CreateField` that the UI renders as a form when the user clicks "New …". Each field has an `id`, `label`, `defaultValue`, and `placeholder`. The first field is typically `"name"`.
+- **`generateCreateChildSQL(path:values:)`** — Receive the filled-in form values keyed by field `id` and return the full CREATE statement. Return `nil` if the form is incomplete (e.g. empty name) — the UI disables Execute when this returns `nil`.
+- **`isDeletable(path:)`** — Return `true` to enable the "Drop …" context-menu item on that node.
+- **`generateDropSQL(path:)`** — Return the DROP statement for the given node.
+
+**Example — Postgres table creation:**
+
+```swift
+func creatableChildLabel(path: [String]) -> String? {
+    // path = [db, schema, "Tables"] → "Table"
+    guard path.count == 3, path[2] == "Tables" else { return nil }
+    return "Table"
+}
+
+func createFormFields(path: [String]) -> [CreateField] {
+    [
+        CreateField(id: "name",   label: "Table Name",   defaultValue: "",         placeholder: "my_table"),
+        CreateField(id: "column", label: "Column Name",  defaultValue: "id",       placeholder: "id"),
+        CreateField(id: "type",   label: "Column Type",  defaultValue: "bigserial", placeholder: "bigserial"),
+    ]
+}
+
+func generateCreateChildSQL(path: [String], values: [String: String]) -> String? {
+    let name = values["name", default: ""]
+    guard !name.isEmpty else { return nil }
+    return "CREATE TABLE \"\(path[1])\".\"\(name)\" (\"\(values["column", default: "id"])\" \(values["type", default: "bigserial"]) PRIMARY KEY)"
+}
+```
+
 ## Hierarchy model
 
 The tree is path-based. Each level is a string array:
@@ -69,7 +112,7 @@ The tree is path-based. Each level is a string array:
 ...          → deeper levels as needed
 ```
 
-Each backend decides how deep the tree goes and what groups exist. Postgres uses 6 levels (database → schema → group → object → subgroup → element). A simpler backend might use 2-3 levels.
+Each backend decides how deep the tree goes and what groups exist. Postgres uses 6 levels (database → schema → group → object → subgroup → element). ScyllaDB uses 5 levels (keyspace → group → object → subgroup → element). A simpler backend might use 2-3 levels.
 
 ## Non-SQL backends
 
@@ -85,7 +128,7 @@ Split implementations at ~300 lines per file. The Postgres backend uses:
 ```
 Postgres/
   PostgresBackend.swift    — class definition, connection pool
-  PostgresHierarchy.swift  — tree navigation, node details
+  PostgresHierarchy.swift  — tree navigation, node details, create/drop
   PostgresDataOps.swift    — data fetching, query execution
   PostgresSQLGen.swift     — SQL generation
   PostgresDecoders.swift   — binary wire format decoders
@@ -129,5 +172,9 @@ final class MyDBBackend: DatabaseBackend, @unchecked Sendable {
     func generateInsertSQL(tablePath: [String], columns: [String], values: [String?]) -> String { "" }
     func generateDeleteSQL(tablePath: [String], primaryKey: [(column: String, value: String)]) -> String { "" }
     func generateDropElementSQL(path: [String], elementName: String) -> String { "" }
+
+    // Optional: implement creatableChildLabel, createFormFields,
+    // generateCreateChildSQL, isDeletable, generateDropSQL to enable
+    // sidebar create/drop context menus.
 }
 ```

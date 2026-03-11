@@ -96,6 +96,7 @@
 			packageProductDependencies = (
 				AA000080 /* PostgresNIO */,
 				AA000081 /* CassandraClient */,
+				AA000082 /* RediStack */,
 			);
 			productName = Morfeo;
 			productReference = AA000001 /* Morfeo.app */;
@@ -123,6 +124,7 @@
 			packageReferences = (
 				AA000070 /* XCRemoteSwiftPackageReference "postgres-nio" */,
 				AA000071 /* XCRemoteSwiftPackageReference "swift-cassandra-client" */,
+				AA000072 /* XCRemoteSwiftPackageReference "RediStack" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = AA000060 /* Products */;
@@ -291,6 +293,14 @@
 				minimumVersion = 0.9.1;
 			};
 		};
+		AA000072 /* XCRemoteSwiftPackageReference "RediStack" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/swift-server/RediStack.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.6.2;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -303,6 +313,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = AA000071 /* XCRemoteSwiftPackageReference "swift-cassandra-client" */;
 			productName = CassandraClient;
+		};
+		AA000082 /* RediStack */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA000072 /* XCRemoteSwiftPackageReference "RediStack" */;
+			productName = RediStack;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -38,6 +38,14 @@ final class AppState {
     var connecting = false
     var query = QueryState()
     var savedQueries: [String: String]
+    var showCreateSheet = false
+    var createSheetLabel = ""
+    var createSheetParentPath: [String] = []
+    var createSheetFields: [CreateField] = []
+    var showTreeAction = false
+    var treeActionSQL = ""
+    var treeActionDB = ""
+    var treeActionRefreshPath: [String] = []
 
     init() {
         let store = ConnectionStoreIO.load()
@@ -231,11 +239,64 @@ final class AppState {
 
         if connection?.isDataBrowsable(path: path) == true {
             Task { await loadTableData(path: path, offset: 0) }
-        } else if path.count >= 3 {
+        } else if path.count >= 2 {
             Task { await loadNodeDetails(path: path) }
         }
 
         saveSession()
+    }
+
+    func promptCreateChild(parentPath: [String]) {
+        guard let conn = connection,
+              let label = conn.creatableChildLabel(path: parentPath) else { return }
+        createSheetLabel = label
+        createSheetParentPath = parentPath
+        createSheetFields = conn.createFormFields(path: parentPath)
+        showCreateSheet = true
+    }
+
+    func executeCreateChild(values: [String: String]) {
+        guard let conn = connection else { return }
+        let parentPath = createSheetParentPath
+        guard let sql = conn.generateCreateChildSQL(path: parentPath, values: values) else { return }
+        showCreateSheet = false
+        let db = parentPath.first ?? ""
+        Task {
+            do {
+                _ = try await conn.executeQuery(database: db, sql: sql)
+                tree.children.removeValue(forKey: parentPath)
+                await loadChildren(path: parentPath)
+            } catch {
+                errorText = error.localizedDescription
+            }
+        }
+    }
+
+    func promptDeleteNode(path: [String]) {
+        guard let conn = connection,
+              let sql = conn.generateDropSQL(path: path) else { return }
+        treeActionSQL = sql
+        // For DROP DATABASE, run on a different connection (empty = default)
+        treeActionDB = path.count == 1 ? "" : (path.first ?? "")
+        treeActionRefreshPath = Array(path.dropLast())
+        showTreeAction = true
+    }
+
+    func executeTreeAction() {
+        guard let conn = connection, !treeActionSQL.isEmpty else { return }
+        let sql = treeActionSQL
+        let db = treeActionDB
+        let refreshPath = treeActionRefreshPath
+        showTreeAction = false
+        Task {
+            do {
+                _ = try await conn.executeQuery(database: db, sql: sql)
+                tree.children.removeValue(forKey: refreshPath)
+                await loadChildren(path: refreshPath)
+            } catch {
+                errorText = error.localizedDescription
+            }
+        }
     }
 
     func loadChildren(path: [String]) async {
@@ -322,6 +383,11 @@ final class AppState {
         return connection?.isDataBrowsable(path: table.tablePath) == true
     }
 
+    var hasStructureTab: Bool {
+        guard let table else { return false }
+        return isDataGroupTable && connection?.structurePath(for: table.tablePath) != nil
+    }
+
     var isEditableTable: Bool {
         guard let table else { return false }
         return connection?.isEditable(path: table.tablePath) == true
@@ -343,9 +409,8 @@ final class AppState {
     func loadTableStructure() {
         guard let table, let conn = connection else { return }
         let path = table.tablePath
-        guard path.count == 4 else { return }
+        guard let structurePath = conn.structurePath(for: path) else { return }
 
-        let structurePath = path + ["Columns"]
         Task {
             do {
                 let data = try await conn.fetchNodeDetails(path: structurePath)

@@ -1,5 +1,21 @@
 import Foundation
 
+struct CreateField: Sendable, Identifiable {
+    let id: String
+    let label: String
+    let defaultValue: String
+    let placeholder: String
+    let options: [String]?
+
+    init(id: String, label: String, defaultValue: String, placeholder: String, options: [String]? = nil) {
+        self.id = id
+        self.label = label
+        self.defaultValue = defaultValue
+        self.placeholder = placeholder
+        self.options = options
+    }
+}
+
 protocol DatabaseBackend: Sendable {
     var name: String { get }
     var syntaxKeywords: Set<String> { get }
@@ -47,4 +63,22 @@ protocol DatabaseBackend: Sendable {
     ) -> String
 
     func generateDropElementSQL(path: [String], elementName: String) -> String
+
+    func creatableChildLabel(path: [String]) -> String?
+    func createFormFields(path: [String]) -> [CreateField]
+    func generateCreateChildSQL(path: [String], values: [String: String]) -> String?
+
+    func isDeletable(path: [String]) -> Bool
+    func generateDropSQL(path: [String]) -> String?
+
+    func structurePath(for tablePath: [String]) -> [String]?
+}
+
+extension DatabaseBackend {
+    func creatableChildLabel(path: [String]) -> String? { nil }
+    func createFormFields(path: [String]) -> [CreateField] { [] }
+    func generateCreateChildSQL(path: [String], values: [String: String]) -> String? { nil }
+    func isDeletable(path: [String]) -> Bool { false }
+    func generateDropSQL(path: [String]) -> String? { nil }
+    func structurePath(for tablePath: [String]) -> [String]? { tablePath + ["Columns"] }
 }

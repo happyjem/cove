@@ -30,6 +30,153 @@ extension PostgresBackend {
             && ["Indexes", "Constraints", "Triggers"].contains(path[4])
     }
 
+    // MARK: - Creation
+
+    func creatableChildLabel(path: [String]) -> String? {
+        switch path.count {
+        case 0: "Database"
+        case 1: "Schema"
+        case 3:
+            switch path[2] {
+            case "Tables": "Table"
+            case "Views": "View"
+            case "Sequences": "Sequence"
+            default: nil
+            }
+        default: nil
+        }
+    }
+
+    private static let pgEncodings = [
+        "UTF8", "LATIN1", "LATIN2", "LATIN9", "WIN1252", "SQL_ASCII", "EUC_JP", "EUC_KR",
+    ]
+
+    private static let pgColumnTypes = [
+        "bigserial", "serial", "integer", "bigint", "smallint",
+        "text", "varchar(255)", "char(1)",
+        "boolean", "uuid",
+        "numeric", "real", "double precision",
+        "date", "timestamp", "timestamptz",
+        "json", "jsonb", "bytea",
+    ]
+
+    func createFormFields(path: [String]) -> [CreateField] {
+        switch path.count {
+        case 0:
+            return [
+                CreateField(id: "name", label: "Name", defaultValue: "", placeholder: "my_database"),
+                CreateField(id: "owner", label: "Owner", defaultValue: "", placeholder: "default"),
+                CreateField(id: "encoding", label: "Encoding", defaultValue: "UTF8", placeholder: "UTF8",
+                            options: Self.pgEncodings),
+            ]
+        case 1:
+            return [
+                CreateField(id: "name", label: "Name", defaultValue: "", placeholder: "my_schema"),
+                CreateField(id: "owner", label: "Owner", defaultValue: "", placeholder: "default"),
+            ]
+        case 3:
+            switch path[2] {
+            case "Tables":
+                return [
+                    CreateField(id: "name", label: "Table Name", defaultValue: "", placeholder: "my_table"),
+                    CreateField(id: "column", label: "Column Name", defaultValue: "id", placeholder: "id"),
+                    CreateField(id: "type", label: "Column Type", defaultValue: "bigserial", placeholder: "bigserial",
+                                options: Self.pgColumnTypes),
+                ]
+            case "Views":
+                return [
+                    CreateField(id: "name", label: "View Name", defaultValue: "", placeholder: "my_view"),
+                    CreateField(id: "query", label: "AS Query", defaultValue: "SELECT 1", placeholder: "SELECT ..."),
+                ]
+            case "Sequences":
+                return [
+                    CreateField(id: "name", label: "Sequence Name", defaultValue: "", placeholder: "my_sequence"),
+                    CreateField(id: "start", label: "Start Value", defaultValue: "1", placeholder: "1"),
+                    CreateField(id: "increment", label: "Increment By", defaultValue: "1", placeholder: "1"),
+                ]
+            default:
+                return []
+            }
+        default:
+            return []
+        }
+    }
+
+    func generateCreateChildSQL(path: [String], values: [String: String]) -> String? {
+        let name = values["name", default: ""].trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return nil }
+        let q = quoteIdentifier(name)
+
+        switch path.count {
+        case 0:
+            var sql = "CREATE DATABASE \(q)"
+            let owner = values["owner", default: ""].trimmingCharacters(in: .whitespaces)
+            if !owner.isEmpty { sql += " OWNER \(quoteIdentifier(owner))" }
+            let encoding = values["encoding", default: ""].trimmingCharacters(in: .whitespaces)
+            if !encoding.isEmpty { sql += " ENCODING '\(encoding)'" }
+            return sql
+        case 1:
+            var sql = "CREATE SCHEMA \(q)"
+            let owner = values["owner", default: ""].trimmingCharacters(in: .whitespaces)
+            if !owner.isEmpty { sql += " AUTHORIZATION \(quoteIdentifier(owner))" }
+            return sql
+        case 3:
+            let fqn = "\(quoteIdentifier(path[1])).\(q)"
+            switch path[2] {
+            case "Tables":
+                let col = values["column", default: "id"]
+                let type = values["type", default: "bigserial"]
+                return "CREATE TABLE \(fqn) (\(quoteIdentifier(col)) \(type) PRIMARY KEY)"
+            case "Views":
+                let query = values["query", default: "SELECT 1"]
+                return "CREATE VIEW \(fqn) AS \(query)"
+            case "Sequences":
+                var sql = "CREATE SEQUENCE \(fqn)"
+                let start = values["start", default: ""].trimmingCharacters(in: .whitespaces)
+                if !start.isEmpty { sql += " START WITH \(start)" }
+                let inc = values["increment", default: ""].trimmingCharacters(in: .whitespaces)
+                if !inc.isEmpty { sql += " INCREMENT BY \(inc)" }
+                return sql
+            default:
+                return nil
+            }
+        default:
+            return nil
+        }
+    }
+
+    // MARK: - Deletion
+
+    func isDeletable(path: [String]) -> Bool {
+        switch path.count {
+        case 1: true          // database
+        case 2: true          // schema
+        case 4:               // table/view/sequence/etc.
+            ["Tables", "Views", "Materialized Views", "Sequences"].contains(path[2])
+        default: false
+        }
+    }
+
+    func generateDropSQL(path: [String]) -> String? {
+        switch path.count {
+        case 1:
+            return "DROP DATABASE \(quoteIdentifier(path[0]))"
+        case 2:
+            return "DROP SCHEMA \(quoteIdentifier(path[1])) CASCADE"
+        case 4:
+            let fqn = "\(quoteIdentifier(path[1])).\(quoteIdentifier(path[3]))"
+            switch path[2] {
+            case "Tables":             return "DROP TABLE \(fqn)"
+            case "Views":              return "DROP VIEW \(fqn)"
+            case "Materialized Views": return "DROP MATERIALIZED VIEW \(fqn)"
+            case "Sequences":          return "DROP SEQUENCE \(fqn)"
+            default: return nil
+            }
+        default:
+            return nil
+        }
+    }
+
     // MARK: - Tree navigation
 
     func listChildren(path: [String]) async throws -> [HierarchyNode] {
@@ -175,7 +322,7 @@ extension PostgresBackend {
     // MARK: - Node details
 
     func fetchNodeDetails(path: [String]) async throws -> QueryResult {
-        guard path.count >= 3 else {
+        guard path.count >= 2 else {
             return QueryResult(columns: [], rows: [], rowsAffected: nil, totalCount: nil)
         }
 
@@ -184,6 +331,8 @@ extension PostgresBackend {
 
         let sql: String
         switch path.count {
+        case 2:
+            sql = schemaDetailSQL(schema: schema)
         case 3, 4:
             sql = groupDetailSQL(schema: schema, group: path[2])
         case 5, 6:
@@ -267,6 +416,23 @@ extension PostgresBackend {
             ))
         }
         return nodes
+    }
+
+    private func schemaDetailSQL(schema: String) -> String {
+        """
+        SELECT c.relname AS "Name", \
+        CASE c.relkind \
+            WHEN 'r' THEN 'Table' WHEN 'v' THEN 'View' \
+            WHEN 'm' THEN 'Mat. View' WHEN 'S' THEN 'Sequence' \
+        END AS "Type", \
+        pg_size_pretty(pg_total_relation_size(c.oid)) AS "Size", \
+        obj_description(c.oid) AS "Comment" \
+        FROM pg_class c \
+        JOIN pg_namespace n ON c.relnamespace = n.oid \
+        WHERE n.nspname = '\(schema)' \
+        AND c.relkind IN ('r', 'v', 'm', 'S') \
+        ORDER BY c.relkind, c.relname
+        """
     }
 
     private func groupDetailSQL(schema: String, group: String) -> String {
