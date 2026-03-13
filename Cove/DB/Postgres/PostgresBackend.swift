@@ -1,5 +1,6 @@
 import Foundation
 import PostgresNIO
+import NIOSSL
 import Logging
 
 final class PostgresBackend: DatabaseBackend, @unchecked Sendable {
@@ -34,16 +35,35 @@ final class PostgresBackend: DatabaseBackend, @unchecked Sendable {
         self.config = config
     }
 
+    deinit {
+        let tasks = lock.withLock { () -> [Task<Void, any Error>] in
+            let values = Array(runningTasks.values)
+            runningTasks.removeAll()
+            clients.removeAll()
+            return values
+        }
+        for task in tasks {
+            task.cancel()
+        }
+    }
+
     static func connect(config: ConnectionConfig) async throws -> PostgresBackend {
         let backend = PostgresBackend(config: config)
 
         let client = backend.makeClient(database: config.database)
         backend.addClient(client, key: "__default__")
 
-        let rows = try await client.query("SELECT current_database()")
-        var dbName = "postgres"
-        for try await row in rows {
-            dbName = try row.decode(String.self, context: .default)
+        let dbName: String
+        do {
+            let rows = try await client.query("SELECT current_database()")
+            var name = "postgres"
+            for try await row in rows {
+                name = try row.decode(String.self, context: .default)
+            }
+            dbName = name
+        } catch {
+            backend.shutdown()
+            throw DbError.connection(error.localizedDescription)
         }
 
         backend.lock.withLock {
@@ -57,17 +77,31 @@ final class PostgresBackend: DatabaseBackend, @unchecked Sendable {
         return backend
     }
 
+    private func shutdown() {
+        let tasks = lock.withLock { () -> [Task<Void, any Error>] in
+            let values = Array(runningTasks.values)
+            runningTasks.removeAll()
+            clients.removeAll()
+            return values
+        }
+        for task in tasks {
+            task.cancel()
+        }
+    }
+
     // MARK: - Pool management
 
     private func makeClient(database: String) -> PostgresClient {
         let port = Int(config.port) ?? 5432
+        var tls = TLSConfiguration.makeClientConfiguration()
+        tls.certificateVerification = .none
         let pgConfig = PostgresClient.Configuration(
             host: config.host,
             port: port,
             username: config.user,
             password: config.password.isEmpty ? nil : config.password,
             database: database.isEmpty ? nil : database,
-            tls: .prefer(.makeClientConfiguration())
+            tls: .prefer(tls)
         )
         return PostgresClient(configuration: pgConfig)
     }

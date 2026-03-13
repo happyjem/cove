@@ -34,6 +34,10 @@ extension PostgresBackend {
             }
         } catch let error as PSQLError {
             throw DbError.query(error.serverMessage)
+        } catch let error as DbError {
+            throw error
+        } catch {
+            throw DbError.query(error.localizedDescription)
         }
 
         let countSql = "SELECT COUNT(*) FROM \(fqn)"
@@ -45,6 +49,10 @@ extension PostgresBackend {
             }
         } catch let error as PSQLError {
             throw DbError.query(error.serverMessage)
+        } catch let error as DbError {
+            throw error
+        } catch {
+            throw DbError.query(error.localizedDescription)
         }
 
         return QueryResult(
@@ -76,6 +84,10 @@ extension PostgresBackend {
             _ = try await client.query(PostgresQuery(stringLiteral: sql))
         } catch let error as PSQLError {
             throw DbError.query(error.serverMessage)
+        } catch let error as DbError {
+            throw error
+        } catch {
+            throw DbError.query(error.localizedDescription)
         }
     }
 
@@ -87,6 +99,10 @@ extension PostgresBackend {
             stream = try await client.query(PostgresQuery(stringLiteral: sql))
         } catch let error as PSQLError {
             throw DbError.query(error.serverMessage)
+        } catch let error as DbError {
+            throw error
+        } catch {
+            throw DbError.query(error.localizedDescription)
         }
 
         var columnInfos: [ColumnInfo] = []
@@ -109,6 +125,10 @@ extension PostgresBackend {
             }
         } catch let error as PSQLError {
             throw DbError.query(error.serverMessage)
+        } catch let error as DbError {
+            throw error
+        } catch {
+            throw DbError.query(error.localizedDescription)
         }
 
         if columnInfos.isEmpty {
