@@ -4,6 +4,7 @@ enum BackendType: String, Codable, CaseIterable, Sendable {
     case postgres
     case mysql
     case scylladb
+    case cassandra
     case redis
 
     var displayName: String {
@@ -11,6 +12,7 @@ enum BackendType: String, Codable, CaseIterable, Sendable {
         case .postgres: "PostgreSQL"
         case .mysql: "MySQL"
         case .scylladb: "ScyllaDB"
+        case .cassandra: "Cassandra"
         case .redis: "Redis"
         }
     }
@@ -20,6 +22,7 @@ enum BackendType: String, Codable, CaseIterable, Sendable {
         case .postgres: "postgres-logo"
         case .mysql: "mysql-logo"
         case .scylladb: "scylladb-logo"
+        case .cassandra: "cassandra-logo"
         case .redis: "redis-logo"
         }
     }
@@ -29,6 +32,7 @@ enum BackendType: String, Codable, CaseIterable, Sendable {
         case .postgres: "5432"
         case .mysql: "3306"
         case .scylladb: "9042"
+        case .cassandra: "9042"
         case .redis: "6379"
         }
     }
@@ -107,6 +111,8 @@ func coveConnect(config: ConnectionConfig) async throws -> (any DatabaseBackend,
             backend = try await MySQLBackend.connect(config: effectiveConfig)
         case .scylladb:
             backend = try await ScyllaBackend.connect(config: effectiveConfig)
+        case .cassandra:
+            backend = try await CassandraBackend.connect(config: effectiveConfig)
         case .redis:
             backend = try await RedisBackend.connect(config: effectiveConfig)
         }
