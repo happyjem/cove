@@ -17,7 +17,7 @@ Supports **PostgreSQL**, **ScyllaDB**, and **Redis** out of the box. Adding a ne
 
 ## Install
 
-Download the latest `.dmg` from [Releases](https://github.com/user/cove/releases), or build from source:
+Download the latest `.dmg` from [Releases](https://github.com/emanuele-em/cove/releases), or build from source:
 
 ```
 xcodebuild -scheme Cove -derivedDataPath .build build

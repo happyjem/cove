@@ -4,6 +4,9 @@ on:
   push:
     tags: ['v*']
 
+permissions:
+  contents: write
+
 jobs:
   build-and-release:
     runs-on: macos-15
@@ -15,15 +18,27 @@ jobs:
           xcode-version: latest-stable
 
       - name: Build
-        run: xcodebuild -scheme Cove -configuration Release -derivedDataPath .build build
-
-      - name: Package app
         run: |
-          APP_PATH=".build/Build/Products/Release/Cove.app"
-          # Create DMG
-          hdiutil create -volname "Cove" -srcfolder "$APP_PATH" -ov -format UDZO Cove.dmg
-          # Create ZIP
-          ditto -c -k --keepParent "$APP_PATH" Cove.app.zip
+          xcodebuild -scheme Cove -configuration Release -derivedDataPath .build build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Create DMG
+        run: |
+          brew install create-dmg
+          create-dmg \
+            --volname "Cove" \
+            --window-size 600 400 \
+            --icon "Cove.app" 150 190 \
+            --app-drop-link 450 190 \
+            --hide-extension "Cove.app" \
+            --skip-jenkins \
+            "Cove.dmg" \
+            ".build/Build/Products/Release/Cove.app"
+
+      - name: Create ZIP
+        run: ditto -c -k --keepParent ".build/Build/Products/Release/Cove.app" Cove.app.zip
 
       - name: Create release
         uses: softprops/action-gh-release@v2
