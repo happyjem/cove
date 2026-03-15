@@ -31,12 +31,10 @@ struct CoveApp: App {
     }
 
     private func configureWindow() {
-        DispatchQueue.main.async {
-            guard let window = NSApplication.shared.windows.first else { return }
-            window.isOpaque = false
-            window.backgroundColor = coveWindowBg
-            window.titlebarAppearsTransparent = true
-        }
+        guard let window = NSApplication.shared.windows.first else { return }
+        window.isOpaque = false
+        window.backgroundColor = coveWindowBg
+        window.titlebarAppearsTransparent = true
     }
 }
 
