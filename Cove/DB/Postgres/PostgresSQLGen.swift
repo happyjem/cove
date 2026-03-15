@@ -62,7 +62,7 @@ extension PostgresBackend {
     // MARK: - Private helpers
 
     private func fqnFrom(_ tablePath: [String]) -> String {
-        precondition(tablePath.count >= 4, "tablePath must have at least 4 elements")
+        guard tablePath.count >= 4 else { return "-- invalid path" }
         return "\"\(tablePath[1])\".\"\(tablePath[3])\""
     }
 

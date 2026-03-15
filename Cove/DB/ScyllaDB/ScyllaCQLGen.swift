@@ -57,8 +57,7 @@ extension ScyllaBackend {
     // MARK: - Private helpers
 
     private func fqnFrom(_ tablePath: [String]) -> String {
-        // path: [keyspace, "Tables"/"Materialized Views", name]
-        precondition(tablePath.count >= 3, "tablePath must have at least 3 elements")
+        guard tablePath.count >= 3 else { return "-- invalid path" }
         return "\"\(tablePath[0])\".\"\(tablePath[2])\""
     }
 
