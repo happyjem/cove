@@ -321,7 +321,7 @@ enum CompletionEngine {
                 let start = i
                 i += 1
                 while i < len && chars[i] != 0x27 { i += 1 }
-                let end = i < len ? i + 1 : len
+                let end = i < len ? i + 1 : len + 1
                 if cursor > start && cursor < end { return true }
                 i = end
                 continue
