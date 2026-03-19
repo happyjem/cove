@@ -3,11 +3,75 @@
 ## Steps
 
 1. Create `DB/YourDB/` folder
-2. Add a case to `BackendType` in `ConnectionConfig.swift` (`displayName`, `iconAsset`, `defaultPort`)
-3. Add the logo to `Assets.xcassets/`
+2. Add a case to `BackendType` in `ConnectionConfig.swift`:
+   - `displayName`, `iconAsset`, `defaultPort`
+   - Set `isFileBased` to `true` if no host/port/user/password (e.g. SQLite). The connection dialog adapts automatically.
+3. Add the logo to `Assets.xcassets/yourdb-logo.imageset/` (PNG + `Contents.json`)
 4. Implement `DatabaseBackend` (see skeleton below)
 5. Add factory case in `coveConnect()` in `ConnectionConfig.swift`
-6. Add driver dependency via SPM
+6. Add driver dependency via SPM (skip if using a system module like SQLite3)
+
+## File Split Convention
+
+Split into extensions by concern, one file each:
+
+| File | Contents |
+|------|----------|
+| `YourDBBackend.swift` | Connection management, `connect()`, `deinit`, `quoteIdentifier`, `syntaxKeywords` |
+| `YourDBDataOps.swift` | `fetchTableData`, `executeQuery`, `updateCell`, `fetchColumnInfo`, `fetchCompletionSchema` |
+| `YourDBHierarchy.swift` | `listChildren`, `fetchNodeDetails`, capability queries, creation/deletion, `NodeTint` constants |
+| `YourDBSQLGen.swift` | `generateUpdateSQL`, `generateInsertSQL`, `generateDeleteSQL`, `generateDropElementSQL` |
+| `YourDBDecoders.swift` | Type-to-string conversion (only if the driver returns binary/typed data) |
+
+Target ~300 lines per file. All extensions go on the same class.
+
+## Thread Safety
+
+Protect mutable connection state. Existing patterns:
+
+- **NSLock** — most backends. Wraps a `[String: Connection]` dict.
+- **Mutex\<T\>** — SQLite. Bundles lock with the single `OpaquePointer` it protects.
+
+Mark the class `@unchecked Sendable` in both cases.
+
+## Path Structure
+
+`listChildren(path:)` receives a growing path array. Typical layouts:
+
+**SQL backends** (Postgres, MySQL, MariaDB, SQLite):
+```
+[] → databases/keyspaces
+[db] → groups (Tables, Views, Functions, ...)
+[db, group] → items
+[db, group, item] → sub-groups (Columns, Indexes, Triggers, ...)
+[db, group, item, sub] → leaf details
+```
+
+**NoSQL** (Redis, MongoDB): same idea, different semantics (keys, collections, etc.)
+
+Capability queries map to path depth:
+- `isDataBrowsable` — typically `path.count == 3` for Tables/Views
+- `isEditable` — same depth, Tables only
+- `isStructureEditable` — `path.count >= 4`, specific sub-groups (Indexes, Triggers, ...)
+
+## Identifier Quoting
+
+| Style | Backends |
+|-------|----------|
+| Double-quote `"` | Postgres, ScyllaDB, Cassandra, SQLite |
+| Backtick `` ` `` | MySQL, MariaDB |
+| None | Redis, MongoDB |
+
+## Optional Protocol Methods
+
+Default implementations return `nil`/`false`/`.empty`. Override to enable features:
+
+| Method | Enables |
+|--------|---------|
+| `creatableChildLabel` / `createFormFields` / `generateCreateChildSQL` | "New..." context menu in sidebar |
+| `isDeletable` / `generateDropSQL` | "Delete" context menu in sidebar |
+| `structurePath` | Links table view to its column structure node |
+| `fetchCompletionSchema` | SQL editor autocomplete |
 
 ## Skeleton
 
@@ -54,8 +118,12 @@ final class MyDBBackend: DatabaseBackend, @unchecked Sendable {
 }
 ```
 
-## Notes
+## Reference Implementations
 
-- Split files at ~300 lines using `extension MyDBBackend` in separate files
-- `executeQuery` accepts any command string, not just SQL
-- Look at `DB/Postgres/` or `DB/Redis/` for real examples
+| Backend | Best example for |
+|---------|-----------------|
+| `Postgres/` | Full-featured SQL backend with schemas, completion, complex type decoders |
+| `MySQL/` | Multi-database SQL backend, TLS fallback, backtick quoting |
+| `Redis/` | Non-SQL backend, command-based execution, dynamic type discovery |
+| `SQLite/` | File-based backend, system module (no SPM dep), `Mutex`, PRAGMA-based introspection |
+| `MongoDB/` | Document store, shell-style commands, schema inferred from sample data |
