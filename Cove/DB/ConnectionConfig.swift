@@ -94,7 +94,9 @@ struct ConnectionConfig: Sendable {
 
     init(backend: BackendType, host: String, port: String, user: String, password: String, database: String, sshTunnel: SSHTunnelConfig? = nil) {
         self.backend = backend
-        self.host = host
+        // macOS resolves "localhost" to IPv6 ::1, but many database servers
+        // (MySQL, MariaDB, …) only listen on IPv4 127.0.0.1 by default.
+        self.host = host.lowercased() == "localhost" ? "127.0.0.1" : host
         self.port = port
         self.user = user
         self.password = password
