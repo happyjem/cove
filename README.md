@@ -42,6 +42,7 @@ Adding a new backend requires zero changes to UI code — see [`DB/README.md`](C
 - **Multiple tabs** with independent connections (Cmd+T)
 - **Connection environments** — local, dev, staging, production
 - **SSH tunneling** — password or private key authentication
+- **SQLite over SSH** — browse and query a VPS-hosted SQLite file from the same SQLite connection flow
 - **Session persistence** — connections and tabs restore across app relaunches
 - **Color-coded indicators** and connection tooltips
 - Native macOS UI — no Electron, no web views
@@ -54,10 +55,15 @@ Download the latest `.dmg` from [Releases](https://github.com/emanuele-em/cove/r
 
 Or build from source:
 
-```
+```bash
+# One-time Xcode setup, if needed
+xcodebuild -runFirstLaunch
+
 xcodebuild -scheme Cove -derivedDataPath .build build
 open .build/Build/Products/Debug/Cove.app
 ```
+
+If `xcodebuild` fails because Xcode has not completed setup on your machine, run `xcodebuild -runFirstLaunch` once and retry.
 
 Requires macOS 15+.
 

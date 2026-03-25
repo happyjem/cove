@@ -14,7 +14,7 @@ extension SQLiteBackend {
 
         let table = path[2]
         let quotedTable = quoteIdentifier(table)
-        let columns = try fetchColumnInfo(table: table)
+        let columns = try await fetchColumnInfo(table: table)
 
         var orderClause = ""
         if let sort {
@@ -23,11 +23,11 @@ extension SQLiteBackend {
         }
 
         let dataSql = "SELECT * FROM \(quotedTable)\(orderClause) LIMIT \(limit) OFFSET \(offset)"
-        let dataResult = try runSQL(dataSql)
+        let dataResult = try await runQuery(dataSql)
 
-        let countSql = "SELECT COUNT(*) FROM \(quotedTable)"
-        let countResult = try runSQL(countSql)
-        let totalCount = countResult.rows.first?.first.flatMap { $0.flatMap { UInt64($0) } } ?? 0
+        let countSql = "SELECT COUNT(*) AS count FROM \(quotedTable)"
+        let countResult = try await runQuery(countSql)
+        let totalCount = countResult.rows.first?.first.flatMap { $0.flatMap(UInt64.init) } ?? 0
 
         return QueryResult(
             columns: columns,
@@ -38,7 +38,7 @@ extension SQLiteBackend {
     }
 
     func executeQuery(database: String, sql: String) async throws -> QueryResult {
-        try runSQL(sql)
+        try await runQuery(sql)
     }
 
     func updateCell(
@@ -50,28 +50,24 @@ extension SQLiteBackend {
         guard tablePath.count == 3 else {
             throw DbError.invalidPath(expected: 3, got: tablePath.count)
         }
+        guard !isReadOnly else {
+            throw DbError.other("SQLite over SSH is read-only for now")
+        }
 
         let sql = generateUpdateSQL(tablePath: tablePath, primaryKey: primaryKey, column: column, newValue: newValue)
-        try execSQL(sql)
+        _ = try await runExec(sql)
     }
 
     func fetchCompletionSchema(database: String) async throws -> CompletionSchema {
-        let tablesResult = try runSQL(
+        let tablesResult = try await runQuery(
             "SELECT name FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' ORDER BY name"
         )
 
         var tableMap: [String: [CompletionColumn]] = [:]
         for row in tablesResult.rows {
             guard let tableName = row.first ?? nil else { continue }
-            let colResult = try runSQL("PRAGMA table_info(\(quoteIdentifier(tableName)))")
-            var cols: [CompletionColumn] = []
-            for colRow in colResult.rows {
-                guard colRow.count >= 3,
-                      let colName = colRow[1],
-                      let colType = colRow[2] else { continue }
-                cols.append(CompletionColumn(name: colName, typeName: colType))
-            }
-            tableMap[tableName] = cols
+            let cols = try await fetchColumnInfo(table: tableName)
+            tableMap[tableName] = cols.map { CompletionColumn(name: $0.name, typeName: $0.typeName) }
         }
 
         let tables: [String: [CompletionTable]] = [
@@ -80,17 +76,5 @@ extension SQLiteBackend {
         ]
 
         return CompletionSchema(schemas: ["main"], tables: tables, functions: [], types: [])
-    }
-
-    func fetchColumnInfo(table: String) throws -> [ColumnInfo] {
-        let result = try runSQL("PRAGMA table_info(\(quoteIdentifier(table)))")
-        // PRAGMA table_info columns: cid(0), name(1), type(2), notnull(3), dflt_value(4), pk(5)
-        return result.rows.compactMap { row in
-            guard row.count >= 6,
-                  let name = row[1],
-                  let typeName = row[2] else { return nil }
-            let isPK = row[5] == "1"
-            return ColumnInfo(name: name, typeName: typeName, isPrimaryKey: isPK)
-        }
     }
 }

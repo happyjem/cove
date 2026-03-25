@@ -5,7 +5,8 @@
 1. Create `DB/YourDB/` folder
 2. Add a case to `BackendType` in `ConnectionConfig.swift`:
    - `displayName`, `iconAsset`, `defaultPort`
-   - Set `isFileBased` to `true` if no host/port/user/password (e.g. SQLite). The connection dialog adapts automatically.
+   - Set backend `capabilities` so the connection dialog can adapt automatically.
+   - Use `usesFilePath` for file-backed databases (e.g. SQLite) and `supportsSSH` when the same backend can also connect through SSH.
 3. Add the logo to `Assets.xcassets/yourdb-logo.imageset/` (PNG + `Contents.json`)
 4. Implement `DatabaseBackend` (see skeleton below)
 5. Add factory case in `coveConnect()` in `ConnectionConfig.swift`
@@ -126,7 +127,7 @@ final class MyDBBackend: DatabaseBackend, @unchecked Sendable {
 | `Postgres/` | Full-featured SQL backend with schemas, completion, complex type decoders |
 | `MySQL/` | Multi-database SQL backend, TLS fallback, backtick quoting |
 | `Redis/` | Non-SQL backend, command-based execution, dynamic type discovery |
-| `SQLite/` | File-based backend, system module (no SPM dep), `Mutex`, PRAGMA-based introspection |
+| `SQLite/` | Shared SQLite backend with local and SSH-backed execution implementations |
 | `MongoDB/` | Document store, shell-style commands, schema inferred from sample data |
 | `Oracle/` | Schema-based SQL backend (no per-DB connections), `withConnection` pool pattern, Oracle system views |
 | `SQLServer/` | Multi-database + schema SQL backend, bracket quoting, T-SQL system views, `SQLValue` enum decoding |
