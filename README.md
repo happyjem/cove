@@ -65,7 +65,7 @@ Contributions welcome:
 - SSL/TLS certificate configuration UI
 - Query explain/analyze visualization
 - Homebrew cask
-- More backends (clickhouse, duckDB, sqlserver)
+- More backends (clickhouse, duckDB)
 
 ## Community
 

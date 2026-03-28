@@ -133,6 +133,7 @@
 				AA000084 /* MySQLNIO */,
 				AA000085 /* MongoKitten */,
 				AA000086 /* OracleNIO */,
+				AA000087 /* CosmoMSSQL */,
 			);
 			productName = Cove;
 			productReference = AA000001 /* Cove.app */;
@@ -186,6 +187,7 @@
 				AA000074 /* XCRemoteSwiftPackageReference "mysql-nio" */,
 				AA000075 /* XCRemoteSwiftPackageReference "MongoKitten" */,
 				AA000076 /* XCRemoteSwiftPackageReference "oracle-nio" */,
+				AA000077 /* XCRemoteSwiftPackageReference "CosmoSQLClient-Swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = AA000060 /* Products */;
@@ -451,6 +453,14 @@
 				kind = branch;
 			};
 		};
+		AA000077 /* XCRemoteSwiftPackageReference "CosmoSQLClient-Swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/vkuttyp/CosmoSQLClient-Swift.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -488,6 +498,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = AA000076 /* XCRemoteSwiftPackageReference "oracle-nio" */;
 			productName = OracleNIO;
+		};
+		AA000087 /* CosmoMSSQL */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA000077 /* XCRemoteSwiftPackageReference "CosmoSQLClient-Swift" */;
+			productName = CosmoMSSQL;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
