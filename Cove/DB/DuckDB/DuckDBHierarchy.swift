@@ -158,7 +158,7 @@ extension DuckDBBackend {
         switch path.count {
         case 0:
             let result = try runSQL(
-                "SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('information_schema', 'pg_catalog') ORDER BY schema_name"
+                "SELECT DISTINCT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('information_schema', 'pg_catalog') ORDER BY schema_name"
             )
             return result.rows.compactMap { row in
                 guard let name = row.first ?? nil else { return nil }
@@ -188,7 +188,7 @@ extension DuckDBBackend {
                 )
             case "Sequences":
                 return try queryNodeList(
-                    sql: "SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = '\(schema)' ORDER BY sequence_name",
+                    sql: "SELECT sequence_name FROM duckdb_sequences() WHERE schema_name = '\(schema)' ORDER BY sequence_name",
                     icon: "number", tint: Self.tintSequence, expandable: false
                 )
             case "Functions":
@@ -304,11 +304,11 @@ extension DuckDBBackend {
             return """
                 SELECT sequence_name AS "Sequence", \
                 start_value AS "Start", \
-                increment AS "Increment", \
-                minimum_value AS "Min", \
-                maximum_value AS "Max" \
-                FROM information_schema.sequences \
-                WHERE sequence_schema = '\(schema)' \
+                increment_by AS "Increment", \
+                min_value AS "Min", \
+                max_value AS "Max" \
+                FROM duckdb_sequences() \
+                WHERE schema_name = '\(schema)' \
                 ORDER BY sequence_name
                 """
         default:
