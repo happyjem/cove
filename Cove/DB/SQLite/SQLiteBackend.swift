@@ -26,16 +26,16 @@ final class SQLiteBackend: DatabaseBackend, @unchecked Sendable {
     let name = "SQLite"
     let syntaxKeywords = SQLiteBackend.sqliteKeywords
 
-    private let execution: any SQLiteExecution
+    private let execution: any FileBackendExecution
 
-    private init(execution: any SQLiteExecution) {
+    private init(execution: any FileBackendExecution) {
         self.execution = execution
     }
 
     static func connect(config: ConnectionConfig) async throws -> SQLiteBackend {
-        let execution: any SQLiteExecution
+        let execution: any FileBackendExecution
         if let sshConfig = config.sshTunnel {
-            execution = try await SQLiteRemoteExecution.connect(path: config.database, sshConfig: sshConfig)
+            execution = try await RemoteCLIExecution.connect(binaryName: "sqlite3", path: config.database, sshConfig: sshConfig)
         } else {
             execution = try SQLiteLocalExecution.connect(path: config.database)
         }
@@ -52,10 +52,6 @@ final class SQLiteBackend: DatabaseBackend, @unchecked Sendable {
 
     func runExec(_ sql: String) async throws -> UInt64? {
         try await execution.execute(sql)
-    }
-
-    func fetchColumnInfo(table: String) async throws -> [ColumnInfo] {
-        try await execution.fetchColumnInfo(table: table, quoteIdentifier: quoteIdentifier)
     }
 
     func quoteIdentifier(_ name: String) -> String {

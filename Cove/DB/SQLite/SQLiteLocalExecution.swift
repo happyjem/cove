@@ -2,7 +2,7 @@ import Foundation
 import SQLite3
 import Synchronization
 
-final class SQLiteLocalExecution: SQLiteExecution, @unchecked Sendable {
+final class SQLiteLocalExecution: FileBackendExecution, @unchecked Sendable {
     let isReadOnly = false
 
     private let handle: Mutex<OpaquePointer?>
@@ -35,10 +35,6 @@ final class SQLiteLocalExecution: SQLiteExecution, @unchecked Sendable {
         return execution
     }
 
-    func validateConnection() async throws {
-        _ = try runSQL("SELECT 1")
-    }
-
     func query(_ sql: String) async throws -> QueryResult {
         try runSQL(sql)
     }
@@ -46,17 +42,6 @@ final class SQLiteLocalExecution: SQLiteExecution, @unchecked Sendable {
     func execute(_ sql: String) async throws -> UInt64? {
         try execSQL(sql)
         return 0
-    }
-
-    func fetchColumnInfo(table: String, quoteIdentifier: (String) -> String) async throws -> [ColumnInfo] {
-        let result = try runSQL("PRAGMA table_info(\(quoteIdentifier(table)))")
-        return result.rows.compactMap { row in
-            guard row.count >= 6,
-                  let name = row[1],
-                  let typeName = row[2] else { return nil }
-            let isPK = row[5] == "1"
-            return ColumnInfo(name: name, typeName: typeName, isPrimaryKey: isPK)
-        }
     }
 
     private func runSQL(_ sql: String) throws -> QueryResult {

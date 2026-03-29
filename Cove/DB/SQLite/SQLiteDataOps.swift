@@ -58,6 +58,17 @@ extension SQLiteBackend {
         _ = try await runExec(sql)
     }
 
+    func fetchColumnInfo(table: String) async throws -> [ColumnInfo] {
+        let result = try await runQuery("PRAGMA table_info(\(quoteIdentifier(table)))")
+        return result.rows.compactMap { row in
+            guard row.count >= 6,
+                  let name = row[1],
+                  let typeName = row[2] else { return nil }
+            let isPK = row[5] == "1"
+            return ColumnInfo(name: name, typeName: typeName, isPrimaryKey: isPK)
+        }
+    }
+
     func fetchCompletionSchema(database: String) async throws -> CompletionSchema {
         let tablesResult = try await runQuery(
             "SELECT name FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' ORDER BY name"

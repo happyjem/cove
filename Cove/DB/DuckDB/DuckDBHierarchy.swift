@@ -19,33 +19,30 @@ extension DuckDBBackend {
     private static let tintColumn   = NodeTint(r: 0.545, g: 0.659, b: 0.780)
     private static let tintKey      = NodeTint(r: 0.835, g: 0.718, b: 0.392)
 
-    // MARK: - Capability queries
-
     func isDataBrowsable(path: [String]) -> Bool {
         path.count == 3 && ["Tables", "Views"].contains(path[1])
     }
 
     func isEditable(path: [String]) -> Bool {
-        path.count == 3 && path[1] == "Tables"
+        !isReadOnly && path.count == 3 && path[1] == "Tables"
     }
 
     func isStructureEditable(path: [String]) -> Bool {
-        path.count >= 4 && path[1] == "Tables" && path[3] == "Indexes"
+        !isReadOnly && path.count >= 4 && path[1] == "Tables" && path[3] == "Indexes"
     }
 
-    // MARK: - Creation
-
     func creatableChildLabel(path: [String]) -> String? {
+        guard !isReadOnly else { return nil }
         switch path.count {
-        case 0: "Schema"
+        case 0: return "Schema"
         case 2:
             switch path[1] {
-            case "Tables": "Table"
-            case "Views": "View"
-            case "Sequences": "Sequence"
-            default: nil
+            case "Tables": return "Table"
+            case "Views": return "View"
+            case "Sequences": return "Sequence"
+            default: return nil
             }
-        default: nil
+        default: return nil
         }
     }
 
@@ -59,6 +56,7 @@ extension DuckDBBackend {
     ]
 
     func createFormFields(path: [String]) -> [CreateField] {
+        guard !isReadOnly else { return [] }
         switch path.count {
         case 0:
             return [
@@ -93,6 +91,7 @@ extension DuckDBBackend {
     }
 
     func generateCreateChildSQL(path: [String], values: [String: String]) -> String? {
+        guard !isReadOnly else { return nil }
         let name = values["name", default: ""].trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return nil }
         let q = quoteIdentifier(name)
@@ -125,17 +124,17 @@ extension DuckDBBackend {
         }
     }
 
-    // MARK: - Deletion
-
     func isDeletable(path: [String]) -> Bool {
+        guard !isReadOnly else { return false }
         switch path.count {
-        case 1: true          // schema
-        case 3: ["Tables", "Views", "Sequences"].contains(path[1])
-        default: false
+        case 1: return true
+        case 3: return ["Tables", "Views", "Sequences"].contains(path[1])
+        default: return false
         }
     }
 
     func generateDropSQL(path: [String]) -> String? {
+        guard !isReadOnly else { return nil }
         switch path.count {
         case 1:
             return "DROP SCHEMA \(quoteIdentifier(path[0])) CASCADE"
@@ -152,12 +151,10 @@ extension DuckDBBackend {
         }
     }
 
-    // MARK: - Tree navigation
-
     func listChildren(path: [String]) async throws -> [HierarchyNode] {
         switch path.count {
         case 0:
-            let result = try runSQL(
+            let result = try await runQuery(
                 "SELECT DISTINCT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('information_schema', 'pg_catalog') ORDER BY schema_name"
             )
             return result.rows.compactMap { row in
@@ -177,22 +174,22 @@ extension DuckDBBackend {
             let schema = path[0]
             switch path[1] {
             case "Tables":
-                return try queryNodeList(
+                return try await queryNodeList(
                     sql: "SELECT table_name FROM information_schema.tables WHERE table_schema = '\(schema)' AND table_type = 'BASE TABLE' ORDER BY table_name",
                     icon: "tablecells", tint: Self.tintTable, expandable: true
                 )
             case "Views":
-                return try queryNodeList(
+                return try await queryNodeList(
                     sql: "SELECT table_name FROM information_schema.tables WHERE table_schema = '\(schema)' AND table_type = 'VIEW' ORDER BY table_name",
                     icon: "eye", tint: Self.tintView, expandable: true
                 )
             case "Sequences":
-                return try queryNodeList(
+                return try await queryNodeList(
                     sql: "SELECT sequence_name FROM duckdb_sequences() WHERE schema_name = '\(schema)' ORDER BY sequence_name",
                     icon: "number", tint: Self.tintSequence, expandable: false
                 )
             case "Functions":
-                return try queryNodeList(
+                return try await queryNodeList(
                     sql: "SELECT DISTINCT function_name FROM duckdb_functions() WHERE schema_name = '\(schema)' AND function_type = 'scalar' AND NOT internal ORDER BY function_name",
                     icon: "function", tint: Self.tintFunction, expandable: false
                 )
@@ -220,9 +217,9 @@ extension DuckDBBackend {
             let relation = path[2]
             switch path[3] {
             case "Columns":
-                return try fetchTreeColumns(schema: schema, relation: relation)
+                return try await fetchTreeColumns(schema: schema, relation: relation)
             case "Indexes":
-                return try queryNodeList(
+                return try await queryNodeList(
                     sql: "SELECT DISTINCT index_name FROM duckdb_indexes() WHERE schema_name = '\(schema)' AND table_name = '\(relation)' ORDER BY index_name",
                     icon: "arrow.up.arrow.down", tint: Self.tintIndex, expandable: false
                 )
@@ -234,8 +231,6 @@ extension DuckDBBackend {
             return []
         }
     }
-
-    // MARK: - Node details
 
     func fetchNodeDetails(path: [String]) async throws -> QueryResult {
         guard path.count >= 2 else {
@@ -254,26 +249,24 @@ extension DuckDBBackend {
             return QueryResult(columns: [], rows: [], rowsAffected: nil, totalCount: nil)
         }
 
-        return try runSQL(sql)
+        return try await runQuery(sql)
     }
-
-    // MARK: - Private helpers
 
     private func queryNodeList(
         sql: String,
         icon: String,
         tint: NodeTint,
         expandable: Bool
-    ) throws -> [HierarchyNode] {
-        let result = try runSQL(sql)
+    ) async throws -> [HierarchyNode] {
+        let result = try await runQuery(sql)
         return result.rows.compactMap { row in
             guard let name = row.first ?? nil else { return nil }
             return HierarchyNode(name: name, icon: icon, tint: tint, isExpandable: expandable)
         }
     }
 
-    private func fetchTreeColumns(schema: String, relation: String) throws -> [HierarchyNode] {
-        let columns = try fetchColumnInfo(schema: schema, table: relation)
+    private func fetchTreeColumns(schema: String, relation: String) async throws -> [HierarchyNode] {
+        let columns = try await fetchColumnInfo(schema: schema, table: relation)
         return columns.map { col in
             HierarchyNode(
                 name: "\(col.name) : \(col.typeName)",

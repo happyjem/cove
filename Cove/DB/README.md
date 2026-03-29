@@ -26,6 +26,25 @@ Split into extensions by concern, one file each:
 
 Target ~300 lines per file. All extensions go on the same class.
 
+## SSH Support for File-Based Backends
+
+File-based backends (SQLite, DuckDB) can support SSH by setting `supportsSSH: true` in `BackendCapabilities`.
+The shared `RemoteCLIExecution` handles SSH command execution and CSV parsing — backends only need to choose between local and remote in their `connect()`:
+
+```swift
+static func connect(config: ConnectionConfig) async throws -> MyDBBackend {
+    let execution: any FileBackendExecution
+    if let sshConfig = config.sshTunnel {
+        execution = try await RemoteCLIExecution.connect(binaryName: "mydb", path: config.database, sshConfig: sshConfig)
+    } else {
+        execution = try MyDBLocalExecution.connect(path: config.database)
+    }
+    return MyDBBackend(execution: execution)
+}
+```
+
+Remote connections are read-only. Guard mutation paths with `isReadOnly` checks in hierarchy, data ops, and SQL gen.
+
 ## Thread Safety
 
 Protect mutable connection state. Existing patterns:
@@ -127,9 +146,9 @@ final class MyDBBackend: DatabaseBackend, @unchecked Sendable {
 | `Postgres/` | Full-featured SQL backend with schemas, completion, complex type decoders |
 | `MySQL/` | Multi-database SQL backend, TLS fallback, backtick quoting |
 | `Redis/` | Non-SQL backend, command-based execution, dynamic type discovery |
-| `SQLite/` | Shared SQLite backend with local and SSH-backed execution implementations |
+| `SQLite/` | File-based backend with local/SSH execution via `FileBackendExecution` |
 | `MongoDB/` | Document store, shell-style commands, schema inferred from sample data |
 | `Oracle/` | Schema-based SQL backend (no per-DB connections), `withConnection` pool pattern, Oracle system views |
 | `SQLServer/` | Multi-database + schema SQL backend, bracket quoting, T-SQL system views, `SQLValue` enum decoding |
 | `ClickHouse/` | Column-oriented OLAP backend, `ALTER TABLE` mutations for UPDATE/DELETE, columnar→row transpose, ClickHouseNIO `EventLoopFuture` bridging |
-| `DuckDB/` | File-based analytical DB, C API via system library (like SQLite), `information_schema` introspection, `duckdb_value_varchar` for type conversion |
+| `DuckDB/` | File-based analytical DB with local/SSH execution, C API via system library, `information_schema` introspection |

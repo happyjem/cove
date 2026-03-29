@@ -16,7 +16,7 @@ extension DuckDBBackend {
         let table = path[2]
         let fqn = "\(quoteIdentifier(schema)).\(quoteIdentifier(table))"
 
-        let columns = try fetchColumnInfo(schema: schema, table: table)
+        let columns = try await fetchColumnInfo(schema: schema, table: table)
 
         var orderClause = ""
         if let sort {
@@ -25,10 +25,10 @@ extension DuckDBBackend {
         }
 
         let dataSql = "SELECT * FROM \(fqn)\(orderClause) LIMIT \(limit) OFFSET \(offset)"
-        let dataResult = try runSQL(dataSql)
+        let dataResult = try await runQuery(dataSql)
 
         let countSql = "SELECT COUNT(*) FROM \(fqn)"
-        let countResult = try runSQL(countSql)
+        let countResult = try await runQuery(countSql)
         let totalCount = countResult.rows.first?.first.flatMap { $0.flatMap { UInt64($0) } } ?? 0
 
         return QueryResult(
@@ -40,7 +40,7 @@ extension DuckDBBackend {
     }
 
     func executeQuery(database: String, sql: String) async throws -> QueryResult {
-        try runSQL(sql)
+        try await runQuery(sql)
     }
 
     func updateCell(
@@ -52,18 +52,21 @@ extension DuckDBBackend {
         guard tablePath.count == 3 else {
             throw DbError.invalidPath(expected: 3, got: tablePath.count)
         }
+        guard !isReadOnly else {
+            throw DbError.other("DuckDB over SSH is read-only for now")
+        }
 
         let sql = generateUpdateSQL(tablePath: tablePath, primaryKey: primaryKey, column: column, newValue: newValue)
-        try execSQL(sql)
+        _ = try await runExec(sql)
     }
 
     func fetchCompletionSchema(database: String) async throws -> CompletionSchema {
-        let schemaResult = try runSQL(
+        let schemaResult = try await runQuery(
             "SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('information_schema', 'pg_catalog') ORDER BY schema_name"
         )
         let schemas = schemaResult.rows.compactMap { $0.first ?? nil }
 
-        let colResult = try runSQL(
+        let colResult = try await runQuery(
             "SELECT table_schema, table_name, column_name, data_type FROM information_schema.columns WHERE table_schema NOT IN ('information_schema', 'pg_catalog') ORDER BY table_schema, table_name, ordinal_position"
         )
         var tableMap: [String: [String: [CompletionColumn]]] = [:]
@@ -84,7 +87,7 @@ extension DuckDBBackend {
                 .sorted { $0.name < $1.name }
         }
 
-        let funcResult = try runSQL(
+        let funcResult = try await runQuery(
             "SELECT DISTINCT function_name FROM duckdb_functions() WHERE schema_name NOT IN ('information_schema', 'pg_catalog') AND function_type = 'scalar' ORDER BY function_name"
         )
         let functions = funcResult.rows.compactMap { $0.first ?? nil }
@@ -92,7 +95,7 @@ extension DuckDBBackend {
         return CompletionSchema(schemas: schemas, tables: tables, functions: functions, types: [])
     }
 
-    func fetchColumnInfo(schema: String, table: String) throws -> [ColumnInfo] {
+    func fetchColumnInfo(schema: String, table: String) async throws -> [ColumnInfo] {
         let sql = """
             SELECT c.column_name, c.data_type, \
             CASE WHEN tc.constraint_type = 'PRIMARY KEY' THEN 1 ELSE 0 END AS is_pk \
@@ -105,7 +108,7 @@ extension DuckDBBackend {
             WHERE c.table_schema = '\(schema)' AND c.table_name = '\(table)' \
             ORDER BY c.ordinal_position
             """
-        let result = try runSQL(sql)
+        let result = try await runQuery(sql)
         return result.rows.compactMap { row in
             guard row.count >= 3,
                   let name = row[0],

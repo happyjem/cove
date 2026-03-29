@@ -1,12 +1,14 @@
 import Foundation
 
-final class SQLiteRemoteExecution: SQLiteExecution, @unchecked Sendable {
+final class RemoteCLIExecution: FileBackendExecution, @unchecked Sendable {
     let isReadOnly = true
 
+    private let binaryName: String
     private let remotePath: String
     private let runner: SSHCommandRunner
 
-    private init(remotePath: String, runner: SSHCommandRunner) {
+    private init(binaryName: String, remotePath: String, runner: SSHCommandRunner) {
+        self.binaryName = binaryName
         self.remotePath = remotePath
         self.runner = runner
     }
@@ -18,10 +20,10 @@ final class SQLiteRemoteExecution: SQLiteExecution, @unchecked Sendable {
         }
     }
 
-    static func connect(path: String, sshConfig: SSHTunnelConfig) async throws -> SQLiteRemoteExecution {
+    static func connect(binaryName: String, path: String, sshConfig: SSHTunnelConfig) async throws -> RemoteCLIExecution {
         let remotePath = path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !remotePath.isEmpty else {
-            throw DbError.connection("remote SQLite path is required")
+            throw DbError.connection("remote database path is required")
         }
 
         let runner: SSHCommandRunner
@@ -31,9 +33,9 @@ final class SQLiteRemoteExecution: SQLiteExecution, @unchecked Sendable {
             throw DbError.connection(error.localizedDescription)
         }
 
-        let execution = SQLiteRemoteExecution(remotePath: remotePath, runner: runner)
+        let execution = RemoteCLIExecution(binaryName: binaryName, remotePath: remotePath, runner: runner)
         do {
-            try await execution.validateConnection()
+            try await execution.validate()
             return execution
         } catch {
             await runner.close()
@@ -41,23 +43,23 @@ final class SQLiteRemoteExecution: SQLiteExecution, @unchecked Sendable {
         }
     }
 
-    func validateConnection() async throws {
-        let sqliteCheck = try await runRemote("command -v sqlite3")
-        guard sqliteCheck.exitCode == 0 else {
-            throw DbError.connection("sqlite3 is not installed or not available in PATH on the remote host")
+    private func validate() async throws {
+        let binaryCheck = try await runRemote("command -v \(shellQuote(binaryName))")
+        guard binaryCheck.exitCode == 0 else {
+            throw DbError.connection("\(binaryName) is not installed or not available in PATH on the remote host")
         }
 
         let fileCheck = try await runRemote("test -r \(shellQuote(remotePath))")
         guard fileCheck.exitCode == 0 else {
-            throw DbError.connection("remote SQLite file is not readable: \(remotePath)")
+            throw DbError.connection("remote file is not readable: \(remotePath)")
         }
 
         _ = try await runRaw("SELECT 1;")
     }
 
     func query(_ sql: String) async throws -> QueryResult {
-        let normalized = leadingKeyword(in: sql)
-        switch normalized {
+        let keyword = leadingKeyword(in: sql)
+        switch keyword {
         case "SELECT", "PRAGMA", "WITH", "EXPLAIN":
             return try await runCSV(sql)
         default:
@@ -71,16 +73,7 @@ final class SQLiteRemoteExecution: SQLiteExecution, @unchecked Sendable {
         return 0
     }
 
-    func fetchColumnInfo(table: String, quoteIdentifier: (String) -> String) async throws -> [ColumnInfo] {
-        let result = try await runCSV("PRAGMA table_info(\(quoteIdentifier(table)))")
-        return result.rows.compactMap { row in
-            guard row.count >= 6,
-                  let name = row[1],
-                  let typeName = row[2] else { return nil }
-            let isPK = row[5] == "1"
-            return ColumnInfo(name: name, typeName: typeName, isPrimaryKey: isPK)
-        }
-    }
+    // MARK: - SSH helpers
 
     private func shellQuote(_ value: String) -> String {
         "'\(value.replacingOccurrences(of: "'", with: "'\"'\"'"))'"
@@ -95,7 +88,7 @@ final class SQLiteRemoteExecution: SQLiteExecution, @unchecked Sendable {
     }
 
     private func runRaw(_ sql: String) async throws -> SSHCommandResult {
-        let result = try await runRemote("sqlite3 \(shellQuote(remotePath)) \(shellQuote(sql))")
+        let result = try await runRemote("\(binaryName) \(shellQuote(remotePath)) \(shellQuote(sql))")
         guard result.exitCode == 0 else {
             let message = result.stderr.isEmpty ? result.stdout : result.stderr
             throw DbError.query(message.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -106,13 +99,15 @@ final class SQLiteRemoteExecution: SQLiteExecution, @unchecked Sendable {
     private static let nullSentinel = "\\N"
 
     private func runCSV(_ sql: String) async throws -> QueryResult {
-        let result = try await runRemote("sqlite3 -header -csv -nullvalue \(shellQuote(Self.nullSentinel)) \(shellQuote(remotePath)) \(shellQuote(sql))")
+        let result = try await runRemote("\(binaryName) -header -csv -nullvalue \(shellQuote(Self.nullSentinel)) \(shellQuote(remotePath)) \(shellQuote(sql))")
         guard result.exitCode == 0 else {
             let message = result.stderr.isEmpty ? result.stdout : result.stderr
             throw DbError.query(message.trimmingCharacters(in: .whitespacesAndNewlines))
         }
         return parseCSVResult(result.stdout)
     }
+
+    // MARK: - CSV parsing
 
     private func parseCSVResult(_ csv: String) -> QueryResult {
         let rows = parseCSVRows(csv)
