@@ -21,8 +21,14 @@ A native macOS database client. Fast, lightweight, extensible.
     <td align="center"><img src="https://raw.githubusercontent.com/emanuele-em/cove/refs/heads/main/Cove/Assets.xcassets/mongodb-logo.imageset/mongodb-logo.png" width="40"><br><b>MongoDB</b></td>
     <td align="center"><img src="https://raw.githubusercontent.com/emanuele-em/cove/refs/heads/main/Cove/Assets.xcassets/redis-logo.imageset/redis-logo.png" width="40"><br><b>Redis</b></td>
     <td align="center"><img src="https://raw.githubusercontent.com/emanuele-em/cove/refs/heads/main/Cove/Assets.xcassets/scylladb-logo.imageset/scylladb-logo.png" width="40"><br><b>ScyllaDB</b></td>
+  </tr>
+  <tr>
     <td align="center"><img src="https://raw.githubusercontent.com/emanuele-em/cove/refs/heads/main/Cove/Assets.xcassets/cassandra-logo.imageset/cassandra-logo.png" width="40"><br><b>Cassandra</b></td>
     <td align="center"><img src="https://raw.githubusercontent.com/emanuele-em/cove/refs/heads/main/Cove/Assets.xcassets/elasticsearch-logo.imageset/elasticsearch-logo.png" width="40"><br><b>Elasticsearch</b></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/emanuele-em/cove/refs/heads/main/Cove/Assets.xcassets/oracle-logo.imageset/oracle-logo.png" width="40"><br><b>Oracle</b></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/emanuele-em/cove/refs/heads/main/Cove/Assets.xcassets/sqlserver-logo.imageset/sqlserver-logo.png" width="40"><br><b>SQL Server</b></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/emanuele-em/cove/refs/heads/main/Cove/Assets.xcassets/clickhouse-logo.imageset/clickhouse-logo.png" width="40"><br><b>ClickHouse</b></td>
+    <td align="center"><img src="https://raw.githubusercontent.com/emanuele-em/cove/refs/heads/main/Cove/Assets.xcassets/duckdb-logo.imageset/duckdb-logo.png" width="40"><br><b>DuckDB</b></td>
   </tr>
 </table>
 
@@ -65,7 +71,6 @@ Contributions welcome:
 - SSL/TLS certificate configuration UI
 - Query explain/analyze visualization
 - Homebrew cask
-- More backends (clickhouse, duckDB)
 
 ## Community
 
