@@ -8,6 +8,10 @@ extension DuckDBBackend {
         column: String,
         newValue: String?
     ) -> String {
+        guard !isReadOnly else {
+            return "-- DuckDB over SSH is read-only for now"
+        }
+
         let fqn = fqnFrom(tablePath)
 
         let setClause: String
@@ -26,6 +30,10 @@ extension DuckDBBackend {
         columns: [String],
         values: [String?]
     ) -> String {
+        guard !isReadOnly else {
+            return "-- DuckDB over SSH is read-only for now"
+        }
+
         let fqn = fqnFrom(tablePath)
         let colList = columns.map { quoteIdentifier($0) }.joined(separator: ", ")
         let valList = values.map { val -> String in
@@ -40,10 +48,17 @@ extension DuckDBBackend {
         tablePath: [String],
         primaryKey: [(column: String, value: String)]
     ) -> String {
+        guard !isReadOnly else {
+            return "-- DuckDB over SSH is read-only for now"
+        }
         return "DELETE FROM \(fqnFrom(tablePath)) WHERE \(whereClause(primaryKey))"
     }
 
     func generateDropElementSQL(path: [String], elementName: String) -> String {
+        guard !isReadOnly else {
+            return "-- DuckDB over SSH is read-only for now"
+        }
+
         let schema = path[0]
         let escaped = elementName.replacingOccurrences(of: "\"", with: "\"\"")
         switch path[3] {
@@ -53,8 +68,6 @@ extension DuckDBBackend {
             return "-- unsupported element type: \(path[3])"
         }
     }
-
-    // MARK: - Private helpers
 
     private func fqnFrom(_ tablePath: [String]) -> String {
         guard tablePath.count >= 3 else { return "-- invalid path" }

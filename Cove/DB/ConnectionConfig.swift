@@ -1,5 +1,13 @@
 import Foundation
 
+struct BackendCapabilities: Sendable {
+    let usesHostPort: Bool
+    let usesCredentials: Bool
+    let usesDatabaseName: Bool
+    let usesFilePath: Bool
+    let supportsSSH: Bool
+}
+
 enum BackendType: String, Codable, CaseIterable, Sendable {
     case postgres
     case mysql
@@ -69,12 +77,28 @@ enum BackendType: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    var isFileBased: Bool {
+    var capabilities: BackendCapabilities {
         switch self {
-        case .sqlite, .duckdb: true
-        default: false
+        case .sqlite, .duckdb:
+            BackendCapabilities(
+                usesHostPort: false,
+                usesCredentials: false,
+                usesDatabaseName: false,
+                usesFilePath: true,
+                supportsSSH: true
+            )
+        default:
+            BackendCapabilities(
+                usesHostPort: true,
+                usesCredentials: true,
+                usesDatabaseName: true,
+                usesFilePath: false,
+                supportsSSH: true
+            )
         }
     }
+
+    var isFileBased: Bool { capabilities.usesFilePath }
 }
 
 enum SSHAuthMethod: String, Codable, Sendable, CaseIterable {
@@ -125,7 +149,7 @@ func coveConnect(config: ConnectionConfig) async throws -> (any DatabaseBackend,
     var effectiveConfig = config
     var tunnel: SSHTunnel?
 
-    if let sshConfig = config.sshTunnel {
+    if config.backend.capabilities.usesHostPort, let sshConfig = config.sshTunnel {
         let remoteHost = config.host
         let remotePort = Int(config.port) ?? 0
         let established = try await SSHTunnel.establish(

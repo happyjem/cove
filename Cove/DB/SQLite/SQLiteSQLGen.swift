@@ -8,6 +8,10 @@ extension SQLiteBackend {
         column: String,
         newValue: String?
     ) -> String {
+        guard !isReadOnly else {
+            return "-- SQLite over SSH is read-only for now"
+        }
+
         let table = quoteIdentifier(tablePath[2])
 
         let setClause: String
@@ -26,6 +30,10 @@ extension SQLiteBackend {
         columns: [String],
         values: [String?]
     ) -> String {
+        guard !isReadOnly else {
+            return "-- SQLite over SSH is read-only for now"
+        }
+
         let table = quoteIdentifier(tablePath[2])
         let colList = columns.map { quoteIdentifier($0) }.joined(separator: ", ")
         let valList = values.map { val -> String in
@@ -40,10 +48,17 @@ extension SQLiteBackend {
         tablePath: [String],
         primaryKey: [(column: String, value: String)]
     ) -> String {
+        guard !isReadOnly else {
+            return "-- SQLite over SSH is read-only for now"
+        }
         return "DELETE FROM \(quoteIdentifier(tablePath[2])) WHERE \(whereClause(primaryKey))"
     }
 
     func generateDropElementSQL(path: [String], elementName: String) -> String {
+        guard !isReadOnly else {
+            return "-- SQLite over SSH is read-only for now"
+        }
+
         let escaped = elementName.replacingOccurrences(of: "\"", with: "\"\"")
         switch path[3] {
         case "Indexes":
@@ -54,8 +69,6 @@ extension SQLiteBackend {
             return "-- unsupported element type: \(path[3])"
         }
     }
-
-    // MARK: - Private helpers
 
     private func whereClause(_ primaryKey: [(column: String, value: String)]) -> String {
         primaryKey.map { pk in

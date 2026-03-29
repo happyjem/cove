@@ -5,7 +5,8 @@
 1. Create `DB/YourDB/` folder
 2. Add a case to `BackendType` in `ConnectionConfig.swift`:
    - `displayName`, `iconAsset`, `defaultPort`
-   - Set `isFileBased` to `true` if no host/port/user/password (e.g. SQLite). The connection dialog adapts automatically.
+   - Set backend `capabilities` so the connection dialog can adapt automatically.
+   - Use `usesFilePath` for file-backed databases (e.g. SQLite) and `supportsSSH` when the same backend can also connect through SSH.
 3. Add the logo to `Assets.xcassets/yourdb-logo.imageset/` (PNG + `Contents.json`)
 4. Implement `DatabaseBackend` (see skeleton below)
 5. Add factory case in `coveConnect()` in `ConnectionConfig.swift`
@@ -24,6 +25,25 @@ Split into extensions by concern, one file each:
 | `YourDBDecoders.swift` | Type-to-string conversion (only if the driver returns binary/typed data) |
 
 Target ~300 lines per file. All extensions go on the same class.
+
+## SSH Support for File-Based Backends
+
+File-based backends (SQLite, DuckDB) can support SSH by setting `supportsSSH: true` in `BackendCapabilities`.
+The shared `RemoteCLIExecution` handles SSH command execution and CSV parsing — backends only need to choose between local and remote in their `connect()`:
+
+```swift
+static func connect(config: ConnectionConfig) async throws -> MyDBBackend {
+    let execution: any FileBackendExecution
+    if let sshConfig = config.sshTunnel {
+        execution = try await RemoteCLIExecution.connect(binaryName: "mydb", path: config.database, sshConfig: sshConfig)
+    } else {
+        execution = try MyDBLocalExecution.connect(path: config.database)
+    }
+    return MyDBBackend(execution: execution)
+}
+```
+
+Remote connections are read-only. Guard mutation paths with `isReadOnly` checks in hierarchy, data ops, and SQL gen.
 
 ## Thread Safety
 
@@ -126,9 +146,9 @@ final class MyDBBackend: DatabaseBackend, @unchecked Sendable {
 | `Postgres/` | Full-featured SQL backend with schemas, completion, complex type decoders |
 | `MySQL/` | Multi-database SQL backend, TLS fallback, backtick quoting |
 | `Redis/` | Non-SQL backend, command-based execution, dynamic type discovery |
-| `SQLite/` | File-based backend, system module (no SPM dep), `Mutex`, PRAGMA-based introspection |
+| `SQLite/` | File-based backend with local/SSH execution via `FileBackendExecution` |
 | `MongoDB/` | Document store, shell-style commands, schema inferred from sample data |
 | `Oracle/` | Schema-based SQL backend (no per-DB connections), `withConnection` pool pattern, Oracle system views |
 | `SQLServer/` | Multi-database + schema SQL backend, bracket quoting, T-SQL system views, `SQLValue` enum decoding |
 | `ClickHouse/` | Column-oriented OLAP backend, `ALTER TABLE` mutations for UPDATE/DELETE, columnar→row transpose, ClickHouseNIO `EventLoopFuture` bridging |
-| `DuckDB/` | File-based analytical DB, C API via system library (like SQLite), `information_schema` introspection, `duckdb_value_varchar` for type conversion |
+| `DuckDB/` | File-based analytical DB with local/SSH execution, C API via system library, `information_schema` introspection |

@@ -10,18 +10,16 @@ extension SQLiteBackend {
     private static let tintKey      = NodeTint(r: 0.84, g: 0.72, b: 0.39)
     private static let tintTrigger  = NodeTint(r: 0.84, g: 0.49, b: 0.39)
 
-    // MARK: - Capability queries
-
     func isDataBrowsable(path: [String]) -> Bool {
         path.count == 3 && ["Tables", "Views"].contains(path[1])
     }
 
     func isEditable(path: [String]) -> Bool {
-        path.count == 3 && path[1] == "Tables"
+        !isReadOnly && path.count == 3 && path[1] == "Tables"
     }
 
     func isStructureEditable(path: [String]) -> Bool {
-        path.count >= 4 && path[1] == "Tables"
+        !isReadOnly && path.count >= 4 && path[1] == "Tables"
             && ["Indexes", "Triggers"].contains(path[3])
     }
 
@@ -30,17 +28,17 @@ extension SQLiteBackend {
         return tablePath + ["Columns"]
     }
 
-    // MARK: - Creation
-
     func creatableChildLabel(path: [String]) -> String? {
+        guard !isReadOnly else { return nil }
         switch path.count {
         case 2:
             switch path[1] {
-            case "Tables": "Table"
-            case "Views": "View"
-            default: nil
+            case "Tables": return "Table"
+            case "Views": return "View"
+            default: return nil
             }
-        default: nil
+        default:
+            return nil
         }
     }
 
@@ -50,7 +48,7 @@ extension SQLiteBackend {
     ]
 
     func createFormFields(path: [String]) -> [CreateField] {
-        guard path.count == 2 else { return [] }
+        guard !isReadOnly, path.count == 2 else { return [] }
         switch path[1] {
         case "Tables":
             return [
@@ -70,7 +68,7 @@ extension SQLiteBackend {
     }
 
     func generateCreateChildSQL(path: [String], values: [String: String]) -> String? {
-        guard path.count == 2 else { return nil }
+        guard !isReadOnly, path.count == 2 else { return nil }
         let name = values["name", default: ""].trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return nil }
         let q = quoteIdentifier(name)
@@ -88,14 +86,12 @@ extension SQLiteBackend {
         }
     }
 
-    // MARK: - Deletion
-
     func isDeletable(path: [String]) -> Bool {
-        path.count == 3 && ["Tables", "Views"].contains(path[1])
+        !isReadOnly && path.count == 3 && ["Tables", "Views"].contains(path[1])
     }
 
     func generateDropSQL(path: [String]) -> String? {
-        guard path.count == 3 else { return nil }
+        guard !isReadOnly, path.count == 3 else { return nil }
         let q = quoteIdentifier(path[2])
         switch path[1] {
         case "Tables": return "DROP TABLE \(q)"
@@ -104,25 +100,19 @@ extension SQLiteBackend {
         }
     }
 
-    // MARK: - Tree navigation
-
     func listChildren(path: [String]) async throws -> [HierarchyNode] {
         switch path.count {
         case 0:
-            return [
-                HierarchyNode(name: "main", icon: "cylinder.split.1x2", tint: Self.tintDatabase, isExpandable: true)
-            ]
-
+            return [HierarchyNode(name: "main", icon: "cylinder.split.1x2", tint: Self.tintDatabase, isExpandable: true)]
         case 1:
             return [
                 HierarchyNode(name: "Tables", icon: "folder", tint: Self.tintGroup, isExpandable: true),
                 HierarchyNode(name: "Views", icon: "folder", tint: Self.tintGroup, isExpandable: true),
             ]
-
         case 2:
             switch path[1] {
             case "Tables":
-                let result = try runSQL(
+                let result = try await runQuery(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
                 )
                 return result.rows.compactMap { row in
@@ -130,9 +120,7 @@ extension SQLiteBackend {
                     return HierarchyNode(name: name, icon: "tablecells", tint: Self.tintTable, isExpandable: true)
                 }
             case "Views":
-                let result = try runSQL(
-                    "SELECT name FROM sqlite_master WHERE type='view' ORDER BY name"
-                )
+                let result = try await runQuery("SELECT name FROM sqlite_master WHERE type='view' ORDER BY name")
                 return result.rows.compactMap { row in
                     guard let name = row.first ?? nil else { return nil }
                     return HierarchyNode(name: name, icon: "eye", tint: Self.tintView, isExpandable: true)
@@ -140,7 +128,6 @@ extension SQLiteBackend {
             default:
                 throw DbError.other("unknown group: \(path[1])")
             }
-
         case 3:
             switch path[1] {
             case "Tables":
@@ -150,18 +137,15 @@ extension SQLiteBackend {
                     HierarchyNode(name: "Triggers", icon: "folder", tint: Self.tintGroup, isExpandable: true),
                 ]
             case "Views":
-                return [
-                    HierarchyNode(name: "Columns", icon: "folder", tint: Self.tintGroup, isExpandable: true),
-                ]
+                return [HierarchyNode(name: "Columns", icon: "folder", tint: Self.tintGroup, isExpandable: true)]
             default:
                 return []
             }
-
         case 4:
             let table = path[2]
             switch path[3] {
             case "Columns":
-                let columns = try fetchColumnInfo(table: table)
+                let columns = try await fetchColumnInfo(table: table)
                 return columns.map { col in
                     HierarchyNode(
                         name: "\(col.name) : \(col.typeName)",
@@ -171,18 +155,16 @@ extension SQLiteBackend {
                     )
                 }
             case "Indexes":
-                let escapedTable = escapeSQLString(table)
-                let result = try runSQL(
-                    "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='\(escapedTable)' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+                let result = try await runQuery(
+                    "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='\(escapeSQLString(table))' AND name NOT LIKE 'sqlite_%' ORDER BY name"
                 )
                 return result.rows.compactMap { row in
                     guard let name = row.first ?? nil else { return nil }
                     return HierarchyNode(name: name, icon: "arrow.up.arrow.down", tint: Self.tintIndex, isExpandable: false)
                 }
             case "Triggers":
-                let escapedTable = escapeSQLString(table)
-                let result = try runSQL(
-                    "SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='\(escapedTable)' ORDER BY name"
+                let result = try await runQuery(
+                    "SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='\(escapeSQLString(table))' ORDER BY name"
                 )
                 return result.rows.compactMap { row in
                     guard let name = row.first ?? nil else { return nil }
@@ -191,13 +173,10 @@ extension SQLiteBackend {
             default:
                 return []
             }
-
         default:
             return []
         }
     }
-
-    // MARK: - Node details
 
     func fetchNodeDetails(path: [String]) async throws -> QueryResult {
         guard path.count >= 1 else {
@@ -206,13 +185,11 @@ extension SQLiteBackend {
 
         switch path.count {
         case 1, 2:
-            return try runSQL(
-                "SELECT name AS 'Name', type AS 'Type' FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name"
+            return try await runQuery(
+                "SELECT name AS Name, type AS Type FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name"
             )
         case 3:
-            let table = escapeSQLString(path[2])
-            let infoResult = try runSQL("PRAGMA table_info(\(quoteIdentifier(path[2])))")
-            // Reshape PRAGMA output with nicer column names
+            let infoResult = try await runQuery("PRAGMA table_info(\(quoteIdentifier(path[2])))")
             let columns = [
                 ColumnInfo(name: "Column", typeName: "TEXT", isPrimaryKey: false),
                 ColumnInfo(name: "Type", typeName: "TEXT", isPrimaryKey: false),
@@ -226,36 +203,34 @@ extension SQLiteBackend {
             }
             return QueryResult(columns: columns, rows: rows, rowsAffected: nil, totalCount: nil)
         case 4:
-            return try subGroupDetail(table: path[2], subGroup: path[3])
+            return try await subGroupDetail(table: path[2], subGroup: path[3])
         default:
             return QueryResult(columns: [], rows: [], rowsAffected: nil, totalCount: nil)
         }
     }
 
-    private func subGroupDetail(table: String, subGroup: String) throws -> QueryResult {
+    private func subGroupDetail(table: String, subGroup: String) async throws -> QueryResult {
         switch subGroup {
         case "Columns":
-            return try runSQL("PRAGMA table_info(\(quoteIdentifier(table)))")
+            return try await runQuery("PRAGMA table_info(\(quoteIdentifier(table)))")
         case "Indexes":
-            let escapedTable = escapeSQLString(table)
-            let idxResult = try runSQL(
-                "SELECT name, sql FROM sqlite_master WHERE type='index' AND tbl_name='\(escapedTable)' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+            let result = try await runQuery(
+                "SELECT name, sql FROM sqlite_master WHERE type='index' AND tbl_name='\(escapeSQLString(table))' AND name NOT LIKE 'sqlite_%' ORDER BY name"
             )
             let columns = [
                 ColumnInfo(name: "Index", typeName: "TEXT", isPrimaryKey: false),
                 ColumnInfo(name: "Definition", typeName: "TEXT", isPrimaryKey: false),
             ]
-            return QueryResult(columns: columns, rows: idxResult.rows, rowsAffected: nil, totalCount: nil)
+            return QueryResult(columns: columns, rows: result.rows, rowsAffected: nil, totalCount: nil)
         case "Triggers":
-            let escapedTable = escapeSQLString(table)
-            let trgResult = try runSQL(
-                "SELECT name, sql FROM sqlite_master WHERE type='trigger' AND tbl_name='\(escapedTable)' ORDER BY name"
+            let result = try await runQuery(
+                "SELECT name, sql FROM sqlite_master WHERE type='trigger' AND tbl_name='\(escapeSQLString(table))' ORDER BY name"
             )
             let columns = [
                 ColumnInfo(name: "Trigger", typeName: "TEXT", isPrimaryKey: false),
                 ColumnInfo(name: "Definition", typeName: "TEXT", isPrimaryKey: false),
             ]
-            return QueryResult(columns: columns, rows: trgResult.rows, rowsAffected: nil, totalCount: nil)
+            return QueryResult(columns: columns, rows: result.rows, rowsAffected: nil, totalCount: nil)
         default:
             return QueryResult(columns: [], rows: [], rowsAffected: nil, totalCount: nil)
         }

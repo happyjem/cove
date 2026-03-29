@@ -25,6 +25,7 @@ struct ConnectionDialog: View {
 
     var body: some View {
         let dialog = state.dialog
+        let capabilities = backend.capabilities
 
         VStack(spacing: 12) {
             Text(dialog.isEditing ? "Edit Connection" : "New Connection")
@@ -72,17 +73,21 @@ struct ConnectionDialog: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            if backend.isFileBased {
+            if capabilities.usesFilePath {
                 formField("Database File") {
                     HStack(spacing: 8) {
                         TextField("Path to database file", text: $database)
                             .textFieldStyle(.roundedBorder)
-                        Button("Browse...") {
-                            browseForDatabaseFile()
+                        if !sshEnabled {
+                            Button("Browse...") {
+                                browseForDatabaseFile()
+                            }
                         }
                     }
                 }
-            } else {
+            }
+
+            if capabilities.usesHostPort {
                 HStack(spacing: 8) {
                     formField("Host") {
                         TextField("Host", text: $host)
@@ -94,7 +99,9 @@ struct ConnectionDialog: View {
                     }
                     .frame(width: 80)
                 }
+            }
 
+            if capabilities.usesCredentials {
                 formField("User") {
                     TextField("User", text: $user)
                         .textFieldStyle(.roundedBorder)
@@ -104,14 +111,16 @@ struct ConnectionDialog: View {
                     SecureField("Password", text: $password)
                         .textFieldStyle(.roundedBorder)
                 }
+            }
 
+            if capabilities.usesDatabaseName {
                 formField("Database") {
                     TextField("Database", text: $database)
                         .textFieldStyle(.roundedBorder)
                 }
             }
 
-            if !backend.isFileBased {
+            if capabilities.supportsSSH {
                 Divider()
 
                 sshSection
@@ -188,6 +197,9 @@ struct ConnectionDialog: View {
         }
         .onChange(of: backend) { _, newBackend in
             port = newBackend.defaultPort
+            if !newBackend.capabilities.supportsSSH {
+                sshEnabled = false
+            }
         }
         .onChange(of: dialog.testResult?.message) {
             guard let result = dialog.testResult else { return }
