@@ -484,9 +484,12 @@ final class AppState {
     }
 
     func refreshNode(path: [String]) {
+        let expandedPaths = tree.expanded.sorted { $0.count < $1.count }
+        tree.reset()
+        tree.expanded = Set(expandedPaths)
         Task {
-            tree.removeChildren(for: path)
-            await loadChildren(path: path)
+            await loadChildren(path: [])
+            for p in expandedPaths { await loadChildren(path: p) }
         }
     }
 
