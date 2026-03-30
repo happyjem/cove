@@ -48,6 +48,7 @@ final class TreeState {
         children.removeValue(forKey: path)
     }
 
+
     func rebuildFlat() {
         var items: [FlatTreeItem] = []
         let rootPath: [String] = []
