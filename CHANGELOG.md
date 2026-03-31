@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+- Bundle libduckdb inside the app so it works without DuckDB installed on the system
+- Fix DuckDB column info query to use `duckdb_columns()` instead of `information_schema`
 - SQLite over SSH — browse and query remote SQLite files via SSH exec channels ([#2](https://github.com/emanuele-em/cove/pull/2) by [@eznix86](https://github.com/eznix86))
 - DuckDB over SSH — same remote CLI execution pattern as SQLite
 - Shared `FileBackendExecution` abstraction for file-based backend SSH support
