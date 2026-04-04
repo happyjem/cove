@@ -8,19 +8,10 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  build:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Generate changelog
-        uses: orhun/git-cliff-action@v4
-        id: changelog
-        with:
-          config: cliff.toml
-          args: --latest --strip header
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -50,6 +41,32 @@ jobs:
 
       - name: Create ZIP
         run: ditto -c -k --keepParent ".build/Build/Products/Release/Cove.app" Cove.app.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cove-artifacts
+          path: |
+            Cove.dmg
+            Cove.app.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        uses: orhun/git-cliff-action@v4
+        id: changelog
+        with:
+          config: cliff.toml
+          args: --latest --strip header
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: cove-artifacts
 
       - name: Create release
         uses: softprops/action-gh-release@v2
